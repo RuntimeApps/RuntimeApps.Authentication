@@ -47,7 +47,7 @@ namespace RuntimeApps.Authentication.Test {
             var result = await _userAccountService.LoginAsync(userName, password);
 
             //Assert
-            result.Success.Should().BeTrue();
+            result.Succeeded.Should().BeTrue();
             result.Data.Should().NotBeNull()
                 .And.Be(user);
             result.Meta.Should().NotBeNull()
@@ -65,7 +65,7 @@ namespace RuntimeApps.Authentication.Test {
             var result = await _userAccountService.LoginAsync(userName, password);
 
             //Assert
-            result.Success.Should().BeFalse();
+            result.Succeeded.Should().BeFalse();
             result.Data.Should().BeNull();
             result.Meta.Should().BeNull();
         }
@@ -87,7 +87,7 @@ namespace RuntimeApps.Authentication.Test {
             var result = await _userAccountService.LoginAsync(userName, password);
 
             //Assert
-            result.Success.Should().BeFalse();
+            result.Succeeded.Should().BeFalse();
             result.Data.Should().BeNull();
             result.Meta.Should().BeNull();
         }
@@ -114,7 +114,7 @@ namespace RuntimeApps.Authentication.Test {
             var result = await _userAccountService.RegisterAsync(user, password);
 
             //Assert
-            result.Success.Should().BeTrue();
+            result.Succeeded.Should().BeTrue();
             result.Data.Should().NotBeNull()
                 .And.Be(user);
             result.Data.UserName.Should().Be(result.Data.Email);
@@ -136,7 +136,7 @@ namespace RuntimeApps.Authentication.Test {
             var result = await _userAccountService.RegisterAsync(user, password);
 
             //Assert
-            result.Success.Should().BeFalse();
+            result.Succeeded.Should().BeFalse();
             result.Data.Should().BeNull();
             result.Meta.Should().BeNull();
         }
@@ -162,7 +162,7 @@ namespace RuntimeApps.Authentication.Test {
             var result = await _userAccountService.RegisterAsync(user, password);
 
             //Assert
-            result.Success.Should().BeFalse();
+            result.Succeeded.Should().BeFalse();
             result.Data.Should().BeNull();
             result.Meta.Should().BeNull();
         }
@@ -200,7 +200,7 @@ namespace RuntimeApps.Authentication.Test {
             var result = await _userAccountService.ExternalLoginAsync(provider, token);
 
             //Assert
-            result.Success.Should().BeTrue();
+            result.Succeeded.Should().BeTrue();
             result.Data.Should().NotBeNull()
                 .And.Be(user);
             result.Meta.Should().NotBeNull()
@@ -240,7 +240,7 @@ namespace RuntimeApps.Authentication.Test {
             var result = await _userAccountService.ExternalLoginAsync(provider, token);
 
             //Assert
-            result.Success.Should().BeTrue();
+            result.Succeeded.Should().BeTrue();
             result.Data.Should().NotBeNull()
                 .And.Be(user);
             result.Meta.Should().NotBeNull()
@@ -278,7 +278,7 @@ namespace RuntimeApps.Authentication.Test {
             var result = await _userAccountService.ExternalLoginAsync(provider, token);
 
             //Assert
-            result.Success.Should().BeTrue();
+            result.Succeeded.Should().BeTrue();
             result.Data.Should().NotBeNull()
                 .And.Be(user);
             result.Meta.Should().NotBeNull()
@@ -302,7 +302,7 @@ namespace RuntimeApps.Authentication.Test {
             var result = await _userAccountService.ExternalLoginAsync(provider, token);
 
             //Assert
-            result.Success.Should().BeFalse();
+            result.Succeeded.Should().BeFalse();
             result.Data.Should().BeNull();
             result.Meta.Should().BeNull();
             _userManagerMock.Verify(u => u.CreateAsync(It.IsAny<IdentityUser>()), Times.Never());

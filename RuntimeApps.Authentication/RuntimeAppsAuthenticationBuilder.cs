@@ -58,5 +58,33 @@ namespace RuntimeApps.Authentication {
             return this;
         }
 
+        public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddValidators(Action<PasswordOptions> passwordOption, Action<UserOptions> userOption) {
+            Services.AddTransient<IPasswordValidator<TUser>, PasswordValidator<TUser>>()
+                    .AddTransient<IUserValidator<TUser>, UserValidator<TUser>>();
+            Services.Configure(passwordOption)
+                    .Configure(userOption);
+            return this;
+        }
+
+        public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddStores<TUserStoreImpl>() 
+            where TUserStoreImpl: UserStoreBase<TUser, TRole, TKey, IdentityUserClaim<TKey>, IdentityUserRole<TKey>, IdentityUserLogin<TKey>, IdentityUserToken<TKey>, IdentityRoleClaim<TKey>>, IProtectedUserStore<TUser> {
+            Services.AddScoped<IUserStore<TUser>, TUserStoreImpl>();
+            Services.AddScoped<IUserLoginStore<TUser>, TUserStoreImpl>();
+            Services.AddScoped<IUserClaimStore<TUser>, TUserStoreImpl>();
+            Services.AddScoped<IUserPasswordStore<TUser>, TUserStoreImpl>();
+            Services.AddScoped<IUserSecurityStampStore<TUser>, TUserStoreImpl>();
+            Services.AddScoped<IUserEmailStore<TUser>, TUserStoreImpl>();
+            Services.AddScoped<IUserLockoutStore<TUser>, TUserStoreImpl>();
+            Services.AddScoped<IUserPhoneNumberStore<TUser>, TUserStoreImpl>();
+            Services.AddScoped<IQueryableUserStore<TUser>, TUserStoreImpl>();
+            Services.AddScoped<IQueryableUserStore<TUser>, TUserStoreImpl>();
+            Services.AddScoped<IUserTwoFactorStore<TUser>, TUserStoreImpl>();
+            Services.AddScoped<IUserAuthenticationTokenStore<TUser>, TUserStoreImpl>();
+            Services.AddScoped<IUserAuthenticatorKeyStore<TUser>, TUserStoreImpl>();
+            Services.AddScoped<IUserTwoFactorRecoveryCodeStore<TUser>, TUserStoreImpl>();
+            Services.AddScoped<IUserRoleStore<TUser>, TUserStoreImpl>();
+            Services.AddScoped<IProtectedUserStore<TUser>, TUserStoreImpl>();
+            return this;
+        }
     }
 }

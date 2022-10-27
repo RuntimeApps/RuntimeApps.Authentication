@@ -1,4 +1,3 @@
-using System;
 using System.Text;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Identity;
@@ -16,7 +15,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlSer
 
 builder.Services.AddAuthentication()
     .AddRuntimeAppsAuthentication<IdentityUser<int>, IdentityRole<int>, int>()
-    .AddStores<ApplicationDbContext, IdentityUser<int>, IdentityRole<int>, int>()
+    .AddEfStores<ApplicationDbContext, IdentityUser<int>, IdentityRole<int>, int>()
     .UseJwt(option => {
         SymmetricSecurityKey signingKey = new(Encoding.ASCII.GetBytes(builder.Configuration["Jwt:Key"]));
         option.RequireHttpsMetadata = false;
@@ -34,10 +33,19 @@ builder.Services.AddAuthentication()
             RequireExpirationTime = true,
         };
     })
+    .AddValidators(passwordOption => {
+        passwordOption.RequiredLength = 8;
+        passwordOption.RequiredUniqueChars = 2;
+        passwordOption.RequireDigit = true;
+        passwordOption.RequireUppercase = true;
+        passwordOption.RequireLowercase = true;
+    }, userOption => {
+        userOption.RequireUniqueEmail = true;
+    })
     .AddGoogleExternalLogin(option => {
         option.ClientId = builder.Configuration["Authentication:Google:ClientId"];
         option.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"];
-        option.Mapper = (data)=> GoogleExternalLoginOption<IdentityUser<int>>.UserIdentityMapper<IdentityUser<int>, int>(data);
+        option.Mapper = (data) => GoogleExternalLoginOption<IdentityUser<int>>.UserIdentityMapper<IdentityUser<int>, int>(data);
     })
     .AddFacebookExternalLogin(option => {
         option.ClientId = builder.Configuration["Authentication:Facebook:AppId"];

@@ -24,11 +24,11 @@ namespace RuntimeApps.Authentication.Service {
         public virtual async Task<Result<TUser, Token>> ExternalLoginAsync(string providerName, string token) {
             var provider = _externalLoginProviders.FirstOrDefault(p => p.Provider.Equals(providerName, StringComparison.OrdinalIgnoreCase));
             if(provider == null)
-                return new Result<TUser, Token>(ResultCode.BadRequest, "Unknown provider");
+                return new Result<TUser, Token>(ResultCode.BadRequest, Result.CreateErrors("Unknown provider", "Provider is not added to system"));
 
             (TUser userInfo, UserLoginInfo loginInfo) = await provider.ValidateAsync(token);
             if(loginInfo == null)
-                return new Result<TUser, Token>(ResultCode.BadRequest, "Invalid External Authentication.");
+                return new Result<TUser, Token>(ResultCode.BadRequest, Result.CreateErrors("Invalid token", "Invalid External Authentication."));
 
             var user = await _userManager.FindByLoginAsync(loginInfo.LoginProvider, loginInfo.ProviderKey);
             if(user == null) {
@@ -44,7 +44,7 @@ namespace RuntimeApps.Authentication.Service {
             }
 
             if(user == null)
-                return new Result<TUser, Token>(ResultCode.BadRequest, "User cannot added");
+                return new Result<TUser, Token>(ResultCode.BadRequest, Result.CreateErrors("Add_Error", "User cannot added"));
 
             var authToken = _jwtUtils.GenerateToken(user);
             return new Result<TUser, Token>() {
@@ -56,11 +56,11 @@ namespace RuntimeApps.Authentication.Service {
         public virtual async Task<Result<TUser, Token>> LoginAsync(string userName, string password) {
             var userInfo = await _userManager.FindByNameAsync(userName);
             if(userInfo == null)
-                return new Result<TUser, Token>(ResultCode.BadRequest, "Username or password is incorrect");
+                return new Result<TUser, Token>(ResultCode.BadRequest, Result.CreateErrors("Wrong_Username_Password", "Username or password is incorrect"));
 
             var passwordMatch = await _userManager.CheckPasswordAsync(userInfo, password);
             if(!passwordMatch)
-                return new Result<TUser, Token>(ResultCode.BadRequest, "Username or password is incorrect");
+                return new Result<TUser, Token>(ResultCode.BadRequest, Result.CreateErrors("Wrong_Username_Password", "Username or password is incorrect"));
 
             var token = _jwtUtils.GenerateToken(userInfo);
             return new Result<TUser, Token>(userInfo, token);
@@ -72,12 +72,12 @@ namespace RuntimeApps.Authentication.Service {
 
             var userInfo = await _userManager.FindByNameAsync(user.UserName);
             if(userInfo != null) {
-                return new Result<TUser, Token>(ResultCode.BadRequest, "This user exists");
+                return new Result<TUser, Token>(ResultCode.BadRequest, Result.CreateErrors("Exist_User", "This user exists"));
             }
 
             var createResult = await _userManager.CreateAsync(user, password);
             if(!createResult.Succeeded) {
-                return new Result<TUser, Token>(ResultCode.BadRequest, createResult.Errors?.FirstOrDefault()?.Description);
+                return new Result<TUser, Token>(ResultCode.BadRequest, createResult.Errors);
             }
 
             var token = _jwtUtils.GenerateToken(user);

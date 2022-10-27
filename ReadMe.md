@@ -55,6 +55,15 @@ builder.Services.AddAuthentication()
             ClockSkew = TimeSpan.Zero,
             RequireExpirationTime = true,
         };
+    })
+    .AddValidators(passwordOption => {
+        passwordOption.RequiredLength = 8;
+        passwordOption.RequiredUniqueChars = 2;
+        passwordOption.RequireDigit = true;
+        passwordOption.RequireUppercase = true;
+        passwordOption.RequireLowercase = true;
+    }, userOption => {
+        userOption.RequireUniqueEmail = true;
     });
 ```
 
