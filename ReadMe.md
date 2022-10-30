@@ -38,7 +38,7 @@ Add required services to DI:
 ```cs
 builder.Services.AddAuthentication()
     .AddRuntimeAppsAuthentication<IdentityUser<int>, IdentityRole<int>, int>()
-    .AddStores<ApplicationDbContext, IdentityUser<int>, IdentityRole<int>, int>()
+    .AddEfStores<ApplicationDbContext, IdentityUser<int>, IdentityRole<int>, int>()
     .UseJwt(option => {
         SymmetricSecurityKey signingKey = new(Encoding.ASCII.GetBytes(builder.Configuration["Jwt:Key"]));
         option.RequireHttpsMetadata = false;

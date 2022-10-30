@@ -1,12 +1,12 @@
 using System.Text;
 using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
 using RuntimeApps.Authentication.EF.Extensions;
 using RuntimeApps.Authentication.Extensions;
 using RuntimeApps.Authentication.Model;
-using RuntimeApps.Authentication.Sample;
+using RuntimeApps.Authentication.Sample.CustomModel;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,8 +14,8 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(connectionString));
 
 builder.Services.AddAuthentication()
-    .AddRuntimeAppsAuthentication<IdentityUser<int>, IdentityRole<int>, int>()
-    .AddEfStores<ApplicationDbContext, IdentityUser<int>, IdentityRole<int>, int>()
+    .AddRuntimeAppsAuthentication<User, Role, int>()
+    .AddEfStores<ApplicationDbContext, User, Role, int>()
     .UseJwt(option => {
         SymmetricSecurityKey signingKey = new(Encoding.ASCII.GetBytes(builder.Configuration["Jwt:Key"]));
         option.RequireHttpsMetadata = false;
@@ -45,17 +45,31 @@ builder.Services.AddAuthentication()
     .AddGoogleExternalLogin(option => {
         option.ClientId = builder.Configuration["Authentication:Google:ClientId"];
         option.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"];
-        option.Mapper = (data) => GoogleExternalLoginOption<IdentityUser<int>>.UserIdentityMapper<IdentityUser<int>, int>(data);
+        option.Mapper = (data) => {
+            var user = GoogleExternalLoginOption<User>.UserIdentityMapper<User, int>(data);
+            user.Name = data.Name;
+            user.ProfilePicture = data.Picture;
+            return user;
+        };
     })
     .AddFacebookExternalLogin(option => {
         option.ClientId = builder.Configuration["Authentication:Facebook:AppId"];
         option.ClientSecret = builder.Configuration["Authentication:Facebook:AppSecret"];
-        option.Mapper = (data) => FacebookExternalLoginOption<IdentityUser<int>>.UserIdentityMapper<IdentityUser<int>, int>(data);
+        option.Mapper = (data) => {
+            var user = FacebookExternalLoginOption<User>.UserIdentityMapper<User, int>(data);
+            user.Name = data.Name;
+            user.ProfilePicture = data.Picture?.Data?.Url;
+            return user;
+        };
     })
     .AddMicrosoftExternalLogin(option => {
         option.ClientId = builder.Configuration["Authentication:Microsoft:ClientId"];
         option.ClientSecret = builder.Configuration["Authentication:Microsoft:ClientSecret"];
-        option.Mapper = (data) => MicrosoftExternalLoginOption<IdentityUser<int>>.UserIdentityMapper<IdentityUser<int>, int>(data);
+        option.Mapper = (data) => {
+            var user = MicrosoftExternalLoginOption<User>.UserIdentityMapper<User, int>(data);
+            user.Name = data.Claims.FirstOrDefault(c => c.Type == "name")?.Value;
+            return user;
+        };
     });
 
 
