@@ -43,7 +43,7 @@ namespace RuntimeApps.Authentication.Test {
             _signInManagerMock.Setup(S => S.PasswordSignInAsync(user, password, It.IsAny<bool>(), It.IsAny<bool>()))
                 .ReturnsAsync(SignInResult.Success);
             _jwtProviderMock.Setup(t => t.GenerateTokenAsync(user))
-                .Returns(token);
+                .ReturnsAsync(token);
 
             //Act
             var result = await _userAccountService.LoginAsync(userName, password);
@@ -110,7 +110,7 @@ namespace RuntimeApps.Authentication.Test {
             _userManagerMock.Setup(u => u.CreateAsync(user, password))
                 .ReturnsAsync(IdentityResult.Success);
             _jwtProviderMock.Setup(t => t.GenerateTokenAsync(user))
-                .Returns(token);
+                .ReturnsAsync(token);
 
             //Act
             var result = await _userAccountService.RegisterAsync(user, password);
@@ -196,7 +196,7 @@ namespace RuntimeApps.Authentication.Test {
             _userManagerMock.Setup(u => u.AddLoginAsync(user, loginInfo))
                 .ReturnsAsync(IdentityResult.Success);
             _jwtProviderMock.Setup(t => t.GenerateTokenAsync(user))
-                .Returns(appToken);
+                .ReturnsAsync(appToken);
 
             //Act
             var result = await _userAccountService.ExternalLoginAsync(provider, token);
@@ -236,7 +236,7 @@ namespace RuntimeApps.Authentication.Test {
             _userManagerMock.Setup(u => u.AddLoginAsync(user, loginInfo))
                 .ReturnsAsync(IdentityResult.Success);
             _jwtProviderMock.Setup(t => t.GenerateTokenAsync(user))
-                .Returns(appToken);
+                .ReturnsAsync(appToken);
 
             //Act
             var result = await _userAccountService.ExternalLoginAsync(provider, token);
@@ -274,7 +274,7 @@ namespace RuntimeApps.Authentication.Test {
             _userManagerMock.Setup(u => u.AddLoginAsync(user, loginInfo))
                 .ReturnsAsync(IdentityResult.Success);
             _jwtProviderMock.Setup(t => t.GenerateTokenAsync(user))
-                .Returns(appToken);
+                .ReturnsAsync(appToken);
 
             //Act
             var result = await _userAccountService.ExternalLoginAsync(provider, token);
