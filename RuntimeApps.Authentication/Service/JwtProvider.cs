@@ -12,22 +12,20 @@ namespace RuntimeApps.Authentication.Service {
         where TUser : IdentityUser<TKey>
         where TKey : IEquatable<TKey> {
         private readonly JwtBearerOptions _jwtOption;
+        private readonly IUserClaimsPrincipalFactory<TUser> _userClaimsPrincipalFactory;
 
-        public JwtProvider(IOptions<JwtBearerOptions> options) {
+        public JwtProvider(IOptions<JwtBearerOptions> options, IUserClaimsPrincipalFactory<TUser> userClaimsPrincipalFactory) {
             _jwtOption = options.Value;
+            _userClaimsPrincipalFactory = userClaimsPrincipalFactory;
         }
-        public Token GenerateToken(TUser user) {
+        public async Task<Token> GenerateTokenAsync(TUser user) {
             var credential = new SigningCredentials(_jwtOption.TokenValidationParameters.IssuerSigningKey, SecurityAlgorithms.HmacSha256);
 
-            var claims = new[] {
-                    new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-                    new Claim(ClaimTypes.Name, user.UserName),
-                    new Claim(ClaimTypes.Email, user.Email),
-                };
+            var claims = await _userClaimsPrincipalFactory.CreateAsync(user);
 
             DateTime expire = DateTime.Now.Add(_jwtOption.RefreshInterval);
             var token = new JwtSecurityToken(_jwtOption.TokenValidationParameters.ValidIssuer, _jwtOption.Audience,
-                claims,
+                claims.Claims,
                 expires: expire,
                 signingCredentials: credential
                 );

@@ -3,6 +3,6 @@
 namespace RuntimeApps.Authentication.Interface {
     public interface IJwtProvider<TUser>
         where TUser : class {
-        public Token GenerateToken(TUser user);
+        Task<Token> GenerateTokenAsync(TUser user);
     }
 }

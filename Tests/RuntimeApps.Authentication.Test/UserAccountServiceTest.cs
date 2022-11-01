@@ -42,7 +42,7 @@ namespace RuntimeApps.Authentication.Test {
                 .ReturnsAsync(user);
             _signInManagerMock.Setup(S => S.PasswordSignInAsync(user, password, It.IsAny<bool>(), It.IsAny<bool>()))
                 .ReturnsAsync(SignInResult.Success);
-            _jwtProviderMock.Setup(t => t.GenerateToken(user))
+            _jwtProviderMock.Setup(t => t.GenerateTokenAsync(user))
                 .Returns(token);
 
             //Act
@@ -109,7 +109,7 @@ namespace RuntimeApps.Authentication.Test {
                 .ReturnsAsync(nullUSer);
             _userManagerMock.Setup(u => u.CreateAsync(user, password))
                 .ReturnsAsync(IdentityResult.Success);
-            _jwtProviderMock.Setup(t => t.GenerateToken(user))
+            _jwtProviderMock.Setup(t => t.GenerateTokenAsync(user))
                 .Returns(token);
 
             //Act
@@ -195,7 +195,7 @@ namespace RuntimeApps.Authentication.Test {
                 .ReturnsAsync(IdentityResult.Success);
             _userManagerMock.Setup(u => u.AddLoginAsync(user, loginInfo))
                 .ReturnsAsync(IdentityResult.Success);
-            _jwtProviderMock.Setup(t => t.GenerateToken(user))
+            _jwtProviderMock.Setup(t => t.GenerateTokenAsync(user))
                 .Returns(appToken);
 
             //Act
@@ -235,7 +235,7 @@ namespace RuntimeApps.Authentication.Test {
                 .ReturnsAsync(user);
             _userManagerMock.Setup(u => u.AddLoginAsync(user, loginInfo))
                 .ReturnsAsync(IdentityResult.Success);
-            _jwtProviderMock.Setup(t => t.GenerateToken(user))
+            _jwtProviderMock.Setup(t => t.GenerateTokenAsync(user))
                 .Returns(appToken);
 
             //Act
@@ -273,7 +273,7 @@ namespace RuntimeApps.Authentication.Test {
                 .ReturnsAsync(user);
             _userManagerMock.Setup(u => u.AddLoginAsync(user, loginInfo))
                 .ReturnsAsync(IdentityResult.Success);
-            _jwtProviderMock.Setup(t => t.GenerateToken(user))
+            _jwtProviderMock.Setup(t => t.GenerateTokenAsync(user))
                 .Returns(appToken);
 
             //Act

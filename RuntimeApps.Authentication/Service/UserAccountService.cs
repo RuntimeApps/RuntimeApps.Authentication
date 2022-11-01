@@ -54,7 +54,7 @@ namespace RuntimeApps.Authentication.Service {
             if(user == null)
                 return new Result<TUser, Token>(ResultCode.BadRequest, Result.CreateErrors("Add_Error", "User cannot added"));
 
-            var authToken = _jwtUtils.GenerateToken(user);
+            var authToken = await _jwtUtils.GenerateTokenAsync(user);
             return new Result<TUser, Token>() {
                 Data = user,
                 Meta = authToken
@@ -71,7 +71,7 @@ namespace RuntimeApps.Authentication.Service {
                 return GetIdentityError(signInResult);
             }
 
-            var token = _jwtUtils.GenerateToken(userInfo);
+            var token = await _jwtUtils.GenerateTokenAsync(userInfo);
             return new Result<TUser, Token>(userInfo, token);
         }
 
@@ -107,7 +107,7 @@ namespace RuntimeApps.Authentication.Service {
                 return new Result<TUser, Token>(ResultCode.BadRequest, createResult.Errors);
             }
 
-            var token = _jwtUtils.GenerateToken(user);
+            var token = await _jwtUtils.GenerateTokenAsync(user);
             return new Result<TUser, Token>(user, token);
         }
     }
