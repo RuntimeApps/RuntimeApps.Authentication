@@ -1,7 +1,9 @@
 ﻿using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using RuntimeApps.Authentication.Interface;
 using RuntimeApps.Authentication.Model;
 using RuntimeApps.Authentication.Service;
@@ -14,10 +16,7 @@ namespace RuntimeApps.Authentication {
         where TKey : IEquatable<TKey> {
 
         public RuntimeAppsAuthenticationBuilder(AuthenticationBuilder authenticationBuilder) {
-            if(authenticationBuilder == null)
-                throw new NullReferenceException(nameof(authenticationBuilder));
-
-            Authentication = authenticationBuilder;
+            Authentication = authenticationBuilder ?? throw new NullReferenceException(nameof(authenticationBuilder));
             Services = authenticationBuilder.Services;
         }
 
@@ -25,23 +24,38 @@ namespace RuntimeApps.Authentication {
         public IServiceCollection Services { get; set; }
 
         public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddAuthenticationServices() {
-            Services.AddScoped<IUserAccountService<TUser>, UserAccountService<TUser, TKey>>();
-            Services.AddScoped<UserManager<TUser>>();
-            Services.AddScoped<IUserManager<TUser>, RuntimeAppsUserManager<TUser>>();
-            Services.AddScoped<IPasswordHasher<TUser>, PasswordHasher<TUser>>();
-            Services.AddScoped<ILookupNormalizer, UpperInvariantLookupNormalizer>();
-            Services.AddScoped<IdentityErrorDescriber>();
+            Services.TryAddScoped<IUserAccountService<TUser>, UserAccountService<TUser, TKey>>();
+
+            Services.AddHttpContextAccessor();
+            // Identity services
+            Services.TryAddScoped<IUserValidator<TUser>, UserValidator<TUser>>();
+            Services.TryAddScoped<IPasswordValidator<TUser>, PasswordValidator<TUser>>();
+            Services.TryAddScoped<IPasswordHasher<TUser>, PasswordHasher<TUser>>();
+            Services.TryAddScoped<ILookupNormalizer, UpperInvariantLookupNormalizer>();
+            Services.TryAddScoped<IRoleValidator<TRole>, RoleValidator<TRole>>();
+            // No interface for the error describer so we can add errors without rev'ing the interface
+            Services.TryAddScoped<IdentityErrorDescriber>();
+            Services.TryAddScoped<ISecurityStampValidator, SecurityStampValidator<TUser>>();
+            Services.TryAddScoped<ITwoFactorSecurityStampValidator, TwoFactorSecurityStampValidator<TUser>>();
+            Services.TryAddScoped<IUserClaimsPrincipalFactory<TUser>, UserClaimsPrincipalFactory<TUser, TRole>>();
+            Services.TryAddScoped<IUserConfirmation<TUser>, DefaultUserConfirmation<TUser>>();
+            Services.TryAddScoped<UserManager<TUser>>();
+            Services.TryAddScoped<IUserManager<TUser>, RuntimeAppsUserManager<TUser>>();
+            Services.TryAddScoped<SignInManager<TUser>>();
+            Services.TryAddScoped<ISignInManager<TUser>, RuntimeAppsSignInManager<TUser>>();
+            Services.TryAddScoped<RoleManager<TRole>>();
             return this;
         }
 
         public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> UseJwt(Action<JwtBearerOptions> configureOptions) {
-            Services.AddScoped<IJwtProvider<TUser>, JwtProvider<TUser, TKey>>();
+            Services.TryAddScoped<IJwtProvider<TUser>, JwtProvider<TUser, TKey>>();
+            Services.Configure(configureOptions);
             Authentication.AddJwtBearer(configureOptions);
             return this;
         }
 
         public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddGoogleExternalLogin(Action<GoogleExternalLoginOption<TUser>> option) {
-            Services.AddTransient<IExternalLoginProvider<TUser>, GoogleExternalLoginProvider<TUser>>();
+            Services.TryAddTransient<IExternalLoginProvider<TUser>, GoogleExternalLoginProvider<TUser>>();
             Services.Configure(option);
             return this;
         }
@@ -59,31 +73,35 @@ namespace RuntimeApps.Authentication {
         }
 
         public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddValidators(Action<PasswordOptions> passwordOption, Action<UserOptions> userOption) {
-            Services.AddTransient<IPasswordValidator<TUser>, PasswordValidator<TUser>>()
-                    .AddTransient<IUserValidator<TUser>, UserValidator<TUser>>();
+            Services.TryAddTransient<IPasswordValidator<TUser>, PasswordValidator<TUser>>();
+            Services.TryAddTransient<IUserValidator<TUser>, UserValidator<TUser>>();
             Services.Configure(passwordOption)
                     .Configure(userOption);
             return this;
         }
 
-        public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddStores<TUserStoreImpl>() 
-            where TUserStoreImpl: UserStoreBase<TUser, TRole, TKey, IdentityUserClaim<TKey>, IdentityUserRole<TKey>, IdentityUserLogin<TKey>, IdentityUserToken<TKey>, IdentityRoleClaim<TKey>>, IProtectedUserStore<TUser> {
-            Services.AddScoped<IUserStore<TUser>, TUserStoreImpl>();
-            Services.AddScoped<IUserLoginStore<TUser>, TUserStoreImpl>();
-            Services.AddScoped<IUserClaimStore<TUser>, TUserStoreImpl>();
-            Services.AddScoped<IUserPasswordStore<TUser>, TUserStoreImpl>();
-            Services.AddScoped<IUserSecurityStampStore<TUser>, TUserStoreImpl>();
-            Services.AddScoped<IUserEmailStore<TUser>, TUserStoreImpl>();
-            Services.AddScoped<IUserLockoutStore<TUser>, TUserStoreImpl>();
-            Services.AddScoped<IUserPhoneNumberStore<TUser>, TUserStoreImpl>();
-            Services.AddScoped<IQueryableUserStore<TUser>, TUserStoreImpl>();
-            Services.AddScoped<IQueryableUserStore<TUser>, TUserStoreImpl>();
-            Services.AddScoped<IUserTwoFactorStore<TUser>, TUserStoreImpl>();
-            Services.AddScoped<IUserAuthenticationTokenStore<TUser>, TUserStoreImpl>();
-            Services.AddScoped<IUserAuthenticatorKeyStore<TUser>, TUserStoreImpl>();
-            Services.AddScoped<IUserTwoFactorRecoveryCodeStore<TUser>, TUserStoreImpl>();
-            Services.AddScoped<IUserRoleStore<TUser>, TUserStoreImpl>();
-            Services.AddScoped<IProtectedUserStore<TUser>, TUserStoreImpl>();
+        public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddStores<TUserStoreImpl, TRoleStoreImpl>() 
+            where TUserStoreImpl: UserStoreBase<TUser, TRole, TKey, IdentityUserClaim<TKey>, IdentityUserRole<TKey>, IdentityUserLogin<TKey>, IdentityUserToken<TKey>, IdentityRoleClaim<TKey>>, IProtectedUserStore<TUser>
+            where TRoleStoreImpl: class, IRoleClaimStore<TRole> {
+            Services.TryAddScoped<IUserStore<TUser>, TUserStoreImpl>();
+            Services.TryAddScoped<IUserLoginStore<TUser>, TUserStoreImpl>();
+            Services.TryAddScoped<IUserClaimStore<TUser>, TUserStoreImpl>();
+            Services.TryAddScoped<IUserPasswordStore<TUser>, TUserStoreImpl>();
+            Services.TryAddScoped<IUserSecurityStampStore<TUser>, TUserStoreImpl>();
+            Services.TryAddScoped<IUserEmailStore<TUser>, TUserStoreImpl>();
+            Services.TryAddScoped<IUserLockoutStore<TUser>, TUserStoreImpl>();
+            Services.TryAddScoped<IUserPhoneNumberStore<TUser>, TUserStoreImpl>();
+            Services.TryAddScoped<IQueryableUserStore<TUser>, TUserStoreImpl>();
+            Services.TryAddScoped<IQueryableUserStore<TUser>, TUserStoreImpl>();
+            Services.TryAddScoped<IUserTwoFactorStore<TUser>, TUserStoreImpl>();
+            Services.TryAddScoped<IUserAuthenticationTokenStore<TUser>, TUserStoreImpl>();
+            Services.TryAddScoped<IUserAuthenticatorKeyStore<TUser>, TUserStoreImpl>();
+            Services.TryAddScoped<IUserTwoFactorRecoveryCodeStore<TUser>, TUserStoreImpl>();
+            Services.TryAddScoped<IUserRoleStore<TUser>, TUserStoreImpl>();
+            Services.TryAddScoped<IProtectedUserStore<TUser>, TUserStoreImpl>();
+
+            Services.TryAddScoped<IRoleStore<TRole>, TRoleStoreImpl>();
+            Services.TryAddScoped<IRoleClaimStore<TRole>, TRoleStoreImpl>();
             return this;
         }
     }

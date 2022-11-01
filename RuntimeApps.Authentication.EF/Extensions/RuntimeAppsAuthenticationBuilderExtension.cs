@@ -8,7 +8,8 @@ namespace RuntimeApps.Authentication.EF.Extensions {
             where TUser : IdentityUser<TKey>, new()
             where TRole : IdentityRole<TKey>
             where TKey : IEquatable<TKey> {
-            builder.AddStores<UserStore<TUser, TRole, TDbContext, TKey>>();
+            builder.AddStores<UserStore<TUser, TRole, TDbContext, TKey>, 
+                RoleStore<TRole, TDbContext, TKey>>();
             return builder;
         }
     }

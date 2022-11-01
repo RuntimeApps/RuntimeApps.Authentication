@@ -25,7 +25,7 @@ namespace RuntimeApps.Authentication.Service {
                     new Claim(ClaimTypes.Email, user.Email),
                 };
 
-            DateTime expire = DateTime.Now.AddMinutes(10);
+            DateTime expire = DateTime.Now.Add(_jwtOption.RefreshInterval);
             var token = new JwtSecurityToken(_jwtOption.TokenValidationParameters.ValidIssuer, _jwtOption.Audience,
                 claims,
                 expires: expire,
@@ -36,27 +36,6 @@ namespace RuntimeApps.Authentication.Service {
                 AuthenticationToken = tokenString,
                 ExpireDate = expire
             };
-        }
-
-        public int? ValidateToken(string token) {
-            if(token == null)
-                return null;
-
-            var tokenHandler = new JwtSecurityTokenHandler();
-            try {
-                tokenHandler.ValidateToken(token, new TokenValidationParameters {
-                    ValidateIssuerSigningKey = true,
-                    IssuerSigningKey = _jwtOption.TokenValidationParameters.IssuerSigningKey,
-                    ValidateIssuer = true,
-                    ValidateAudience = true,
-                }, out SecurityToken validatedToken);
-
-                var jwtToken = (JwtSecurityToken)validatedToken;
-                var userId = int.Parse(jwtToken.Claims.First(x => x.Type == "Email").Value);
-                return userId;
-            } catch {
-                return null;
-            }
         }
     }
 }

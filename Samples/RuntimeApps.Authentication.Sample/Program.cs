@@ -21,6 +21,7 @@ builder.Services.AddAuthentication()
         option.RequireHttpsMetadata = false;
         option.SaveToken = true;
         option.RefreshOnIssuerKeyNotFound = false;
+        option.RefreshInterval = TimeSpan.FromMinutes(int.Parse(builder.Configuration["Jwt:ExpireInMinute"]));
         option.TokenValidationParameters = new TokenValidationParameters {
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = signingKey,
@@ -76,7 +77,6 @@ if(app.Environment.IsDevelopment()) {
         try {
             var context = services.GetRequiredService<ApplicationDbContext>();
             context.Database.Migrate();
-            context.Database.EnsureCreated();
         } catch(Exception ex) {
             var logger = services.GetRequiredService<ILogger<Program>>();
             logger.LogError(ex, "An error occurred while seeding the database.");

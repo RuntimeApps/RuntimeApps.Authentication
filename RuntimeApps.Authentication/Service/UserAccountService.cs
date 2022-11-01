@@ -1,6 +1,4 @@
 ﻿using Microsoft.AspNetCore.Identity;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using RuntimeApps.Authentication.Interface;
 using RuntimeApps.Authentication.Model;
 
@@ -9,14 +7,16 @@ namespace RuntimeApps.Authentication.Service {
         where TUser : IdentityUser<TKey>
         where TKey : IEquatable<TKey> {
         private readonly IUserManager<TUser> _userManager;
+        private readonly ISignInManager<TUser> _signInManager;
         private readonly IJwtProvider<TUser> _jwtUtils;
         private readonly IEnumerable<IExternalLoginProvider<TUser>> _externalLoginProviders;
 
         public UserAccountService(IUserManager<TUser> userManager,
+                                  ISignInManager<TUser> signInManager,
                                   IJwtProvider<TUser> jwtUtils,
-                                  IEnumerable<IExternalLoginProvider<TUser>> externalLoginProviders
-            ) {
+                                  IEnumerable<IExternalLoginProvider<TUser>> externalLoginProviders) {
             _userManager = userManager;
+            _signInManager = signInManager;
             _jwtUtils = jwtUtils;
             _externalLoginProviders = externalLoginProviders;
         }
@@ -35,11 +35,19 @@ namespace RuntimeApps.Authentication.Service {
                 user = await _userManager.FindByEmailAsync(userInfo.Email);
                 if(user == null) {
                     user = userInfo;
-                    await _userManager.CreateAsync(user);
-                    await _userManager.AddLoginAsync(user, loginInfo);
+
+                    var createResult = await _userManager.CreateAsync(user);
+                    if(!createResult.Succeeded)
+                        return new Result<TUser, Token>(ResultCode.BadRequest, createResult.Errors);
+
+                    var addLoginResult = await _userManager.AddLoginAsync(user, loginInfo);
+                    if(!addLoginResult.Succeeded)
+                        return new Result<TUser, Token>(ResultCode.BadRequest, addLoginResult.Errors);
                 }
                 else {
-                    await _userManager.AddLoginAsync(user, loginInfo);
+                    var addLoginResult = await _userManager.AddLoginAsync(user, loginInfo);
+                    if(!addLoginResult.Succeeded)
+                        return new Result<TUser, Token>(ResultCode.BadRequest, addLoginResult.Errors);
                 }
             }
 
@@ -56,14 +64,33 @@ namespace RuntimeApps.Authentication.Service {
         public virtual async Task<Result<TUser, Token>> LoginAsync(string userName, string password) {
             var userInfo = await _userManager.FindByNameAsync(userName);
             if(userInfo == null)
-                return new Result<TUser, Token>(ResultCode.BadRequest, Result.CreateErrors("Wrong_Username_Password", "Username or password is incorrect"));
+                return GetIdentityError(SignInResult.Failed);
 
-            var passwordMatch = await _userManager.CheckPasswordAsync(userInfo, password);
-            if(!passwordMatch)
-                return new Result<TUser, Token>(ResultCode.BadRequest, Result.CreateErrors("Wrong_Username_Password", "Username or password is incorrect"));
+            var signInResult = await _signInManager.PasswordSignInAsync(userInfo, password, true, false);
+            if(!signInResult.Succeeded) {
+                return GetIdentityError(signInResult);
+            }
 
             var token = _jwtUtils.GenerateToken(userInfo);
             return new Result<TUser, Token>(userInfo, token);
+        }
+
+        private Result<TUser, Token> GetIdentityError(SignInResult signInResult) {
+            ResultCode code = ResultCode.BadRequest;
+            var description = "Username or password is incorrect";
+            if(signInResult.IsNotAllowed) {
+                description = "You are not allowed to login";
+                code = ResultCode.Forbidden;
+            }
+            else if(signInResult.IsLockedOut) {
+                description = "You are locked out";
+                code = ResultCode.Conflict;
+            }
+            else if(signInResult.RequiresTwoFactor) {
+                description = "Two factor authentication required";
+                code = ResultCode.Accepted;
+            }
+            return new Result<TUser, Token>(code, Result.CreateErrors(signInResult.ToString(), description));
         }
 
         public virtual async Task<Result<TUser, Token>> RegisterAsync(TUser user, string password) {

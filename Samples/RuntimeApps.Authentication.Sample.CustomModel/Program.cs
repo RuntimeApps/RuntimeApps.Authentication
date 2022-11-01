@@ -21,6 +21,7 @@ builder.Services.AddAuthentication()
         option.RequireHttpsMetadata = false;
         option.SaveToken = true;
         option.RefreshOnIssuerKeyNotFound = false;
+        option.RefreshInterval = TimeSpan.FromMinutes(int.Parse(builder.Configuration["Jwt:ExpireInMinute"]));
         option.TokenValidationParameters = new TokenValidationParameters {
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = signingKey,

@@ -8,6 +8,7 @@ namespace RuntimeApps.Authentication.Test {
     public class UserAccountServiceTest {
         private const IdentityUser nullUSer = null;
         private readonly Mock<IUserManager<IdentityUser>> _userManagerMock;
+        private readonly Mock<ISignInManager<IdentityUser>> _signInManagerMock;
         private readonly Mock<IJwtProvider<IdentityUser>> _jwtProviderMock;
         private readonly Mock<IExternalLoginProvider<IdentityUser>> _externalLoginProvider1;
         private readonly Mock<IExternalLoginProvider<IdentityUser>> _externalLoginProvider2;
@@ -15,10 +16,11 @@ namespace RuntimeApps.Authentication.Test {
 
         public UserAccountServiceTest() {
             _userManagerMock = new Mock<IUserManager<IdentityUser>>();
+            _signInManagerMock = new Mock<ISignInManager<IdentityUser>>();
             _jwtProviderMock = new Mock<IJwtProvider<IdentityUser>>();
             _externalLoginProvider1 = new Mock<IExternalLoginProvider<IdentityUser>>();
             _externalLoginProvider2 = new Mock<IExternalLoginProvider<IdentityUser>>();
-            _userAccountService = new UserAccountService<IdentityUser, string>(_userManagerMock.Object, _jwtProviderMock.Object, new IExternalLoginProvider<IdentityUser>[] {
+            _userAccountService = new UserAccountService<IdentityUser, string>(_userManagerMock.Object, _signInManagerMock.Object, _jwtProviderMock.Object, new IExternalLoginProvider<IdentityUser>[] {
                 _externalLoginProvider1.Object,
                 _externalLoginProvider2.Object
             });
@@ -38,8 +40,8 @@ namespace RuntimeApps.Authentication.Test {
             };
             _userManagerMock.Setup(u => u.FindByNameAsync(userName))
                 .ReturnsAsync(user);
-            _userManagerMock.Setup(u => u.CheckPasswordAsync(user, password))
-                .ReturnsAsync(true);
+            _signInManagerMock.Setup(S => S.PasswordSignInAsync(user, password, It.IsAny<bool>(), It.IsAny<bool>()))
+                .ReturnsAsync(SignInResult.Success);
             _jwtProviderMock.Setup(t => t.GenerateToken(user))
                 .Returns(token);
 
@@ -80,8 +82,8 @@ namespace RuntimeApps.Authentication.Test {
             };
             _userManagerMock.Setup(u => u.FindByNameAsync(It.IsAny<string>()))
                 .ReturnsAsync(nullUSer);
-            _userManagerMock.Setup(u => u.CheckPasswordAsync(user, password))
-                .ReturnsAsync(false);
+            _signInManagerMock.Setup(S => S.PasswordSignInAsync(user, password, It.IsAny<bool>(), It.IsAny<bool>()))
+                .ReturnsAsync(SignInResult.Failed);
 
             //Act
             var result = await _userAccountService.LoginAsync(userName, password);
