@@ -34,14 +34,14 @@ builder.Services.AddAuthentication()
             RequireExpirationTime = true,
         };
     })
-    .AddValidators(passwordOption => {
-        passwordOption.RequiredLength = 8;
-        passwordOption.RequiredUniqueChars = 2;
-        passwordOption.RequireDigit = true;
-        passwordOption.RequireUppercase = true;
-        passwordOption.RequireLowercase = true;
-    }, userOption => {
-        userOption.RequireUniqueEmail = true;
+    .AddValidators(identityOption => {
+        identityOption.Password.RequiredLength = 8;
+        identityOption.Password.RequiredUniqueChars = 2;
+        identityOption.Password.RequireDigit = true;
+        identityOption.Password.RequireUppercase = true;
+        identityOption.Password.RequireLowercase = true;
+
+        identityOption.User.RequireUniqueEmail = true;
     })
     .AddGoogleExternalLogin(option => {
         option.ClientId = builder.Configuration["Authentication:Google:ClientId"];

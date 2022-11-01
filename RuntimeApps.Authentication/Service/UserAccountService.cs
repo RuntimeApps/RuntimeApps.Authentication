@@ -75,6 +75,19 @@ namespace RuntimeApps.Authentication.Service {
             return new Result<TUser, Token>(userInfo, token);
         }
 
+        public virtual async Task<Result<TUser, Token>> RegisterAsync(TUser user, string password) {
+            if(string.IsNullOrEmpty(user.UserName))
+                user.UserName = user.Email;
+
+            var createResult = await _userManager.CreateAsync(user, password);
+            if(!createResult.Succeeded) {
+                return new Result<TUser, Token>(ResultCode.BadRequest, createResult.Errors);
+            }
+
+            var token = await _jwtUtils.GenerateTokenAsync(user);
+            return new Result<TUser, Token>(user, token);
+        }
+
         private Result<TUser, Token> GetIdentityError(SignInResult signInResult) {
             ResultCode code = ResultCode.BadRequest;
             var description = "Username or password is incorrect";
@@ -93,22 +106,5 @@ namespace RuntimeApps.Authentication.Service {
             return new Result<TUser, Token>(code, Result.CreateErrors(signInResult.ToString(), description));
         }
 
-        public virtual async Task<Result<TUser, Token>> RegisterAsync(TUser user, string password) {
-            if(string.IsNullOrEmpty(user.UserName))
-                user.UserName = user.Email;
-
-            var userInfo = await _userManager.FindByNameAsync(user.UserName);
-            if(userInfo != null) {
-                return new Result<TUser, Token>(ResultCode.BadRequest, Result.CreateErrors("Exist_User", "This user exists"));
-            }
-
-            var createResult = await _userManager.CreateAsync(user, password);
-            if(!createResult.Succeeded) {
-                return new Result<TUser, Token>(ResultCode.BadRequest, createResult.Errors);
-            }
-
-            var token = await _jwtUtils.GenerateTokenAsync(user);
-            return new Result<TUser, Token>(user, token);
-        }
     }
 }
