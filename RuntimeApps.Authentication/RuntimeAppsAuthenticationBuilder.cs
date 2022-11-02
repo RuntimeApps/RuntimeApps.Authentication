@@ -72,10 +72,11 @@ namespace RuntimeApps.Authentication {
             return this;
         }
 
-        public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddValidators(Action<IdentityOptions> identityOption) {
+        public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddValidators(Action<IdentityOptions> identityOption = null) {
             Services.TryAddTransient<IPasswordValidator<TUser>, PasswordValidator<TUser>>();
             Services.TryAddTransient<IUserValidator<TUser>, UserValidator<TUser>>();
-            Services.Configure(identityOption);
+            if(identityOption != null)
+                Services.Configure(identityOption);
             return this;
         }
 

@@ -1,12 +1,13 @@
 using System.Text;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
 using RuntimeApps.Authentication.EF.Extensions;
 using RuntimeApps.Authentication.Extensions;
-using RuntimeApps.Authentication.Model;
-using RuntimeApps.Authentication.Sample.CustomModel;
+using RuntimeApps.Authentication.Sample.CustomValidation;
+using RuntimeApps.Authentication.Sample.CustomValidation.PasswordValidators;
+using RuntimeApps.Authentication.Sample.CustomValidation.UserValidators;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,14 +15,13 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(connectionString));
 
 builder.Services.AddAuthentication()
-    .AddRuntimeAppsAuthentication<User, Role, int>()
-    .AddEfStores<ApplicationDbContext, User, Role, int>()
+    .AddRuntimeAppsAuthentication<IdentityUser, IdentityRole, string>()
+    .AddEfStores<ApplicationDbContext, IdentityUser, IdentityRole, string>()
     .UseJwt(option => {
         SymmetricSecurityKey signingKey = new(Encoding.ASCII.GetBytes(builder.Configuration["Jwt:Key"]));
         option.RequireHttpsMetadata = false;
         option.SaveToken = true;
         option.RefreshOnIssuerKeyNotFound = false;
-        option.RefreshInterval = TimeSpan.FromMinutes(int.Parse(builder.Configuration["Jwt:ExpireInMinute"]));
         option.TokenValidationParameters = new TokenValidationParameters {
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = signingKey,
@@ -34,37 +34,18 @@ builder.Services.AddAuthentication()
             RequireExpirationTime = true,
         };
     })
-    .AddValidators()
-    .AddGoogleExternalLogin(option => {
-        option.ClientId = builder.Configuration["Authentication:Google:ClientId"];
-        option.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"];
-        option.Mapper = (data) => {
-            var user = GoogleExternalLoginOption<User>.UserIdentityMapper<User, int>(data);
-            user.Name = data.Name;
-            user.ProfilePicture = data.Picture;
-            return user;
-        };
-    })
-    .AddFacebookExternalLogin(option => {
-        option.ClientId = builder.Configuration["Authentication:Facebook:AppId"];
-        option.ClientSecret = builder.Configuration["Authentication:Facebook:AppSecret"];
-        option.Mapper = (data) => {
-            var user = FacebookExternalLoginOption<User>.UserIdentityMapper<User, int>(data);
-            user.Name = data.Name;
-            user.ProfilePicture = data.Picture?.Data?.Url;
-            return user;
-        };
-    })
-    .AddMicrosoftExternalLogin(option => {
-        option.ClientId = builder.Configuration["Authentication:Microsoft:ClientId"];
-        option.ClientSecret = builder.Configuration["Authentication:Microsoft:ClientSecret"];
-        option.Mapper = (data) => {
-            var user = MicrosoftExternalLoginOption<User>.UserIdentityMapper<User, int>(data);
-            user.Name = data.Claims.FirstOrDefault(c => c.Type == "name")?.Value;
-            return user;
-        };
+    .AddValidators(identityOption => {
+        identityOption.Password.RequiredLength = 8;
+        identityOption.Password.RequiredUniqueChars = 2;
+        identityOption.Password.RequireDigit = true;
+        identityOption.Password.RequireUppercase = true;
+        identityOption.Password.RequireLowercase = true;
+
+        identityOption.User.RequireUniqueEmail = true;
     });
 
+builder.Services.AddScoped<IPasswordValidator<IdentityUser>, PasswordDoesNotContainUsername>()
+                .AddScoped<IUserValidator<IdentityUser>, UserNameMustBeEmailValidator>();
 
 builder.Services.AddControllers()
     .AddJsonOptions(option => {
@@ -83,7 +64,6 @@ if(app.Environment.IsDevelopment()) {
         try {
             var context = services.GetRequiredService<ApplicationDbContext>();
             context.Database.Migrate();
-            context.Database.EnsureCreated();
         } catch(Exception ex) {
             var logger = services.GetRequiredService<ILogger<Program>>();
             logger.LogError(ex, "An error occurred while seeding the database.");

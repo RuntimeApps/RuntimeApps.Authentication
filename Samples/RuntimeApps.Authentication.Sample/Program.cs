@@ -34,15 +34,7 @@ builder.Services.AddAuthentication()
             RequireExpirationTime = true,
         };
     })
-    .AddValidators(identityOption => {
-        identityOption.Password.RequiredLength = 8;
-        identityOption.Password.RequiredUniqueChars = 2;
-        identityOption.Password.RequireDigit = true;
-        identityOption.Password.RequireUppercase = true;
-        identityOption.Password.RequireLowercase = true;
-
-        identityOption.User.RequireUniqueEmail = true;
-    })
+    .AddValidators()
     .AddGoogleExternalLogin(option => {
         option.ClientId = builder.Configuration["Authentication:Google:ClientId"];
         option.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"];
