@@ -1,6 +1,6 @@
 {
   "profiles": {
-    "RuntimeApps.Authentication.Sample.CustomModel": {
+    "RuntimeApps.Authentication.Sample.CustomStore": {
       "commandName": "Project",
       "launchBrowser": true,
       "launchUrl": "swagger",
@@ -8,7 +8,7 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       },
       "dotnetRunMessages": true,
-      "applicationUrl": "http://localhost:5146"
+      "applicationUrl": "http://localhost:5102"
     },
     "IIS Express": {
       "commandName": "IISExpress",
@@ -22,7 +22,7 @@
     "windowsAuthentication": false,
     "anonymousAuthentication": true,
     "iisExpress": {
-      "applicationUrl": "http://localhost:32426",
+      "applicationUrl": "http://localhost:22999",
       "sslPort": 0
     }
   }
