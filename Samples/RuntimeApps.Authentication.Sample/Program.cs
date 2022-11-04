@@ -51,6 +51,9 @@ builder.Services.AddAuthentication()
         option.Mapper = (data) => MicrosoftExternalLoginOption<IdentityUser<int>>.UserIdentityMapper<IdentityUser<int>, int>(data);
     });
 
+builder.Services.AddAutoMapper(conf => {
+    conf.AddProfile<IdentityUserMapper<IdentityUser<int>, IdentityUserDto<int>, int>>();
+});
 
 builder.Services.AddControllers()
     .AddJsonOptions(option => {

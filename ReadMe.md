@@ -37,8 +37,8 @@ Add required services to DI:
 
 ```cs
 builder.Services.AddAuthentication()
-    .AddRuntimeAppsAuthentication<IdentityUser<int>, IdentityRole<int>, int>()
-    .AddEfStores<ApplicationDbContext, IdentityUser<int>, IdentityRole<int>, int>()
+    .AddRuntimeAppsAuthentication<IdentityUser, IdentityRole, string>()
+    .AddEfStores<ApplicationDbContext, IdentityUser, IdentityRole, string>()
     .UseJwt(option => {
         SymmetricSecurityKey signingKey = new(Encoding.ASCII.GetBytes(builder.Configuration["Jwt:Key"]));
         option.RequireHttpsMetadata = false;
@@ -56,15 +56,15 @@ builder.Services.AddAuthentication()
             RequireExpirationTime = true,
         };
     })
-    .AddValidators(identityOption => {
-        identityOption.Password.RequiredLength = 8;
-        identityOption.Password.RequiredUniqueChars = 2;
-        identityOption.Password.RequireDigit = true;
-        identityOption.Password.RequireUppercase = true;
-        identityOption.Password.RequireLowercase = true;
+    .AddValidators();
+```
 
-        identityOption.User.RequireUniqueEmail = true;
-    });
+Configure AutoMapper:
+
+```cs
+builder.Services.AddAutoMapper(conf => {
+    conf.AddProfile<IdentityUserMapper<IdentityUser, IdentityUserDto, string>>();
+});
 ```
 
 You can add more services and customize services. Also, there are some [samples](./Samples/) in this repository.

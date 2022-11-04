@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
@@ -65,6 +66,9 @@ builder.Services.AddAuthentication()
         };
     });
 
+builder.Services.AddAutoMapper(conf => {
+    conf.AddProfile<IdentityUserMapper<User, UserDto, int>>();
+});
 
 builder.Services.AddControllers()
     .AddJsonOptions(option => {

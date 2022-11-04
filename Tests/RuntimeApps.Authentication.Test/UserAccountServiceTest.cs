@@ -131,8 +131,11 @@ namespace RuntimeApps.Authentication.Test {
             var user = new IdentityUser() {
                 Email = "test@test.com"
             };
-            _userManagerMock.Setup(u => u.FindByNameAsync(user.Email))
-                .ReturnsAsync((IdentityUser)user);
+            _userManagerMock.Setup(u => u.CreateAsync(user, password))
+                .ReturnsAsync(IdentityResult.Failed(new IdentityError {
+                    Code = "Failed",
+                    Description = "User Exist!"
+                }));
 
             //Act
             var result = await _userAccountService.RegisterAsync(user, password);
@@ -150,8 +153,6 @@ namespace RuntimeApps.Authentication.Test {
             var user = new IdentityUser() {
                 Email = "test@test.com"
             };
-            _userManagerMock.Setup(u => u.FindByNameAsync(user.Email))
-                .ReturnsAsync(nullUSer);
             _userManagerMock.Setup(u => u.CreateAsync(user, password))
                 .ReturnsAsync(IdentityResult.Failed(new IdentityError[] {
                     new IdentityError {

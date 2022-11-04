@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using RuntimeApps.Authentication.EF.Extensions;
 using RuntimeApps.Authentication.Extensions;
+using RuntimeApps.Authentication.Model;
 using RuntimeApps.Authentication.Sample.CustomValidation;
 using RuntimeApps.Authentication.Sample.CustomValidation.PasswordValidators;
 using RuntimeApps.Authentication.Sample.CustomValidation.UserValidators;
@@ -46,6 +47,10 @@ builder.Services.AddAuthentication()
 
 builder.Services.AddScoped<IPasswordValidator<IdentityUser>, PasswordDoesNotContainUsername>()
                 .AddScoped<IUserValidator<IdentityUser>, UserNameMustBeEmailValidator>();
+
+builder.Services.AddAutoMapper(conf => {
+    conf.AddProfile<IdentityUserMapper<IdentityUser, IdentityUserDto, string>>();
+});
 
 builder.Services.AddControllers()
     .AddJsonOptions(option => {

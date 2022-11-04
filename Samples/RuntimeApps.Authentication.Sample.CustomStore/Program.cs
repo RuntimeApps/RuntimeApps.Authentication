@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.IdentityModel.Tokens;
 using RuntimeApps.Authentication.Extensions;
+using RuntimeApps.Authentication.Model;
 using RuntimeApps.Authentication.Sample.CustomStore.Store;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -32,6 +33,9 @@ builder.Services.AddAuthentication()
     })
     .AddValidators();
 
+builder.Services.AddAutoMapper(conf => {
+    conf.AddProfile<IdentityUserMapper<IdentityUser, IdentityUserDto, string>>();
+});
 
 builder.Services.AddControllers()
     .AddJsonOptions(option => {
