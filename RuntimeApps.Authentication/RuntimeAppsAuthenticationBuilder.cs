@@ -43,6 +43,8 @@ namespace RuntimeApps.Authentication {
             Services.TryAddScoped<IUserManager<TUser>, RuntimeAppsUserManager<TUser>>();
             Services.TryAddScoped<SignInManager<TUser>>();
             Services.TryAddScoped<ISignInManager<TUser>, RuntimeAppsSignInManager<TUser>>();
+            Services.TryAddScoped<RoleManager<TUser>>();
+            Services.TryAddScoped<IRoleManager<TUser>, RuntimeAppsRoleManager<TUser>>();
             Services.TryAddScoped<RoleManager<TRole>>();
             return this;
         }
@@ -75,6 +77,7 @@ namespace RuntimeApps.Authentication {
         public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddValidators(Action<IdentityOptions> identityOption = null) {
             Services.TryAddTransient<IPasswordValidator<TUser>, PasswordValidator<TUser>>();
             Services.TryAddTransient<IUserValidator<TUser>, UserValidator<TUser>>();
+            Services.TryAddTransient<IRoleValidator<TRole>, RoleValidator<TRole>>();
             if(identityOption != null)
                 Services.Configure(identityOption);
             return this;

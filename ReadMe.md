@@ -36,10 +36,10 @@ Or you can install other implementations of the store [link](https://github.com/
 Add required services to DI:
 
 ```cs
-builder.Services.AddAuthentication()
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddRuntimeAppsAuthentication<IdentityUser, IdentityRole, string>()
     .AddEfStores<ApplicationDbContext, IdentityUser, IdentityRole, string>()
-    .UseJwt(option => {
+    .UseJwt(JwtBearerDefaults.AuthenticationScheme, option => {
         SymmetricSecurityKey signingKey = new(Encoding.ASCII.GetBytes(builder.Configuration["Jwt:Key"]));
         option.RequireHttpsMetadata = false;
         option.SaveToken = true;
