@@ -4,6 +4,11 @@ using Microsoft.AspNetCore.Identity;
 namespace RuntimeApps.Authentication.Interface {
     public interface IUserManager<TUser>
         where TUser : class {
+        string GetUserName(ClaimsPrincipal principal);
+        string GetUserId(ClaimsPrincipal principal);
+        Task<TUser> GetUserAsync(ClaimsPrincipal principal);
+
+
         Task<IdentityResult> CreateAsync(TUser user);
         Task<IdentityResult> CreateAsync(TUser user, string password);
         Task<IdentityResult> UpdateAsync(TUser user);

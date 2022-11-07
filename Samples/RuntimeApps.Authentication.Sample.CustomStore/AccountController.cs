@@ -9,7 +9,7 @@ namespace RuntimeApps.Authentication.Sample.CustomStore {
     [Route("api/[controller]")]
     [ApiController]
     public class AccountController: BaseAccountController<IdentityUser, IdentityUserDto, string> {
-        public AccountController(IUserAccountService<IdentityUser> userAccountService, IMapper mapper) : base(userAccountService, mapper) {
+        public AccountController(IUserAccountService<IdentityUser> userAccountService, IMapper mapper, IUserManager<IdentityUser> userManager) : base(userAccountService, mapper, userManager) {
         }
     }
 }

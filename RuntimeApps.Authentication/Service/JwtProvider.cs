@@ -1,5 +1,4 @@
 ﻿using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
@@ -24,12 +23,13 @@ namespace RuntimeApps.Authentication.Service {
             var claims = await _userClaimsPrincipalFactory.CreateAsync(user);
 
             DateTime expire = DateTime.Now.Add(_jwtOption.RefreshInterval);
-            var token = new JwtSecurityToken(_jwtOption.TokenValidationParameters.ValidIssuer, _jwtOption.Audience,
+            var token = new JwtSecurityToken(_jwtOption.TokenValidationParameters.ValidIssuer, _jwtOption.TokenValidationParameters.ValidAudience,
                 claims.Claims,
                 expires: expire,
                 signingCredentials: credential
                 );
             var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
+
             return new Token() {
                 AuthenticationToken = tokenString,
                 ExpireDate = expire

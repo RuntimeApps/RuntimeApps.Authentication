@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
@@ -14,10 +15,10 @@ var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(connectionString));
 
-builder.Services.AddAuthentication()
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddRuntimeAppsAuthentication<User, Role, int>()
     .AddEfStores<ApplicationDbContext, User, Role, int>()
-    .UseJwt(option => {
+    .UseJwt(JwtBearerDefaults.AuthenticationScheme, option => {
         SymmetricSecurityKey signingKey = new(Encoding.ASCII.GetBytes(builder.Configuration["Jwt:Key"]));
         option.RequireHttpsMetadata = false;
         option.SaveToken = true;

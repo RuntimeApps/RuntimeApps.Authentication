@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.IdentityModel.Tokens;
 using RuntimeApps.Authentication.Extensions;
@@ -10,10 +11,10 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSingleton<IStoreUnitOfWork, StoreUnitOfWork>();
 
-builder.Services.AddAuthentication()
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddRuntimeAppsAuthentication<IdentityUser, IdentityRole, string>()
     .AddStores<CustomUserStore, CustomRoleStore>()
-    .UseJwt(option => {
+    .UseJwt(JwtBearerDefaults.AuthenticationScheme, option => {
         SymmetricSecurityKey signingKey = new(Encoding.ASCII.GetBytes(builder.Configuration["Jwt:Key"]));
         option.RequireHttpsMetadata = false;
         option.SaveToken = true;

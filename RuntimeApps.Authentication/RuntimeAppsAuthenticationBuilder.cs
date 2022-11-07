@@ -47,10 +47,10 @@ namespace RuntimeApps.Authentication {
             return this;
         }
 
-        public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> UseJwt(Action<JwtBearerOptions> configureOptions) {
+        public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> UseJwt(string authenticationScheme, Action<JwtBearerOptions> configureOptions) {
             Services.TryAddScoped<IJwtProvider<TUser>, JwtProvider<TUser, TKey>>();
             Services.Configure(configureOptions);
-            Authentication.AddJwtBearer(configureOptions);
+            Authentication.AddJwtBearer(authenticationScheme, configureOptions);
             return this;
         }
 

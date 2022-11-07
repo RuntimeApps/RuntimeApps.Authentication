@@ -1,4 +1,5 @@
 ﻿using AutoMapper;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using RuntimeApps.Authentication.Interface;
@@ -11,10 +12,12 @@ namespace RuntimeApps.Authentication.Controller {
         where TKey : IEquatable<TKey> {
         private readonly IUserAccountService<TUser> _userAccountService;
         private readonly IMapper _mapper;
+        private readonly IUserManager<TUser> _userManager;
 
-        public BaseAccountController(IUserAccountService<TUser> userAccountService, IMapper mapper) {
+        public BaseAccountController(IUserAccountService<TUser> userAccountService, IMapper mapper, IUserManager<TUser> userManager) {
             _userAccountService = userAccountService;
             _mapper = mapper;
+            _userManager = userManager;
         }
 
         [HttpPost("login")]
@@ -34,6 +37,13 @@ namespace RuntimeApps.Authentication.Controller {
         public virtual async Task<IActionResult> ExternalLogin([FromBody] ExternalAuthModel request) {
             var result = await _userAccountService.ExternalLoginAsync(request.Provider, request.Token);
             return MapResponse(result);
+        }
+
+        [Authorize]
+        [HttpGet]
+        public virtual async Task<IActionResult> GetUserInfo() {
+            var user = await _userManager.GetUserAsync(this.User);
+            return Ok(user != null ? _mapper.Map<TUserDto>(user) : null);
         }
 
         protected virtual IActionResult MapResponse(Result<TUser, Token> result) {
