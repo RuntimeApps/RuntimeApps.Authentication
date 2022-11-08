@@ -9,6 +9,21 @@ But there are some problems with this implementation. I list some of them that I
 - Some implementations of ASP.Net core user management should be improved. For example, `UserManager<TUser>` doesn't inherit any interfaces which makes it very hard to write tests. In this repository, I have tried to solve some of these problems.
 - Asp.Net core external social logins works based on redirecting to the social login page which is not useful in ASP.Net core Web APIs. ASP.Net core implements this by using MVC and managing the request responses, But this repository has implemented social login token validation which is useful for APIs that don't access user pages (Mobile apps and frontend frameworks).
 
+## Samples
+There is lots of samples that show how to use ASP.Net core identity and this library. Duo to the fact that this library is using ASP.Net core identity, other samples of other projects is useful too. The samples that re provided are:
+
+Sample | Description
+--- | ----
+[Basic](./Samples/RuntimeApps.Authentication.Sample/) | Basic sample that configure simple user manager with basic APIs and external logins.
+[Custom Model](./Samples/RuntimeApps.Authentication.Sample.CustomModel/) | Sample with custom user and role model which gets data from user and external login.
+[Custom Validation](./Samples/RuntimeApps.Authentication.Sample.CustomValidation/) | Sample of ASP.Net core identity which costomize validation.
+[Custom Store](./Samples/RuntimeApps.Authentication.Sample.CustomStore/) | Sample of implementing identity stores
+Role Management and Authorization | Sample of managing roles and using authorizatin
+Custom claim and user Cookie | Sample of costimizing claim and using user cookies as jwt store.
+Email Verification | Verify user email by sending an email to user for validation
+Two step authentication | Enable two step authentication for some users
+Protect personal data | Protect personal user data in database by encrypt user data
+
 ## Getting Started
 
 To use this library do the steps:

@@ -95,7 +95,6 @@ namespace RuntimeApps.Authentication {
             Services.TryAddScoped<IUserLockoutStore<TUser>, TUserStoreImpl>();
             Services.TryAddScoped<IUserPhoneNumberStore<TUser>, TUserStoreImpl>();
             Services.TryAddScoped<IQueryableUserStore<TUser>, TUserStoreImpl>();
-            Services.TryAddScoped<IQueryableUserStore<TUser>, TUserStoreImpl>();
             Services.TryAddScoped<IUserTwoFactorStore<TUser>, TUserStoreImpl>();
             Services.TryAddScoped<IUserAuthenticationTokenStore<TUser>, TUserStoreImpl>();
             Services.TryAddScoped<IUserAuthenticatorKeyStore<TUser>, TUserStoreImpl>();

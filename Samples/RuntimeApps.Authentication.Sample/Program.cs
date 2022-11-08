@@ -15,8 +15,11 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(connectionString));
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    //Add default services of RuntimeApps application
     .AddRuntimeAppsAuthentication<IdentityUser<int>, IdentityRole<int>, int>()
+    //Add implemetation of entity framework core user stores.
     .AddEfStores<ApplicationDbContext, IdentityUser<int>, IdentityRole<int>, int>()
+    //Add Jwt authentication serices to application
     .UseJwt(JwtBearerDefaults.AuthenticationScheme, option => {
         SymmetricSecurityKey signingKey = new(Encoding.ASCII.GetBytes(builder.Configuration["Jwt:Key"]));
         option.RequireHttpsMetadata = false;
@@ -35,23 +38,31 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             RequireExpirationTime = true,
         };
     })
+    //Add basic validations which is implemeted by ASP.Net core identity
     .AddValidators()
+    //Add validator services of google authentication
     .AddGoogleExternalLogin(option => {
         option.ClientId = builder.Configuration["Authentication:Google:ClientId"];
         option.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"];
+        // Mapper of google model to user model
         option.Mapper = (data) => GoogleExternalLoginOption<IdentityUser<int>>.UserIdentityMapper<IdentityUser<int>, int>(data);
     })
+    //Add validator services of facebook authentication
     .AddFacebookExternalLogin(option => {
         option.ClientId = builder.Configuration["Authentication:Facebook:AppId"];
         option.ClientSecret = builder.Configuration["Authentication:Facebook:AppSecret"];
+        // Mapper of facebook model to user model
         option.Mapper = (data) => FacebookExternalLoginOption<IdentityUser<int>>.UserIdentityMapper<IdentityUser<int>, int>(data);
     })
+    //Add validator services of microsoft authentication
     .AddMicrosoftExternalLogin(option => {
         option.ClientId = builder.Configuration["Authentication:Microsoft:ClientId"];
         option.ClientSecret = builder.Configuration["Authentication:Microsoft:ClientSecret"];
+        // Mapper of microsot model to user model
         option.Mapper = (data) => MicrosoftExternalLoginOption<IdentityUser<int>>.UserIdentityMapper<IdentityUser<int>, int>(data);
     });
 
+// Add Automapper with IdentityUserMapper. If you want to have your output model, you can override this class.
 builder.Services.AddAutoMapper(conf => {
     conf.AddProfile<IdentityUserMapper<IdentityUser<int>, IdentityUserDto<int>, int>>();
 });
