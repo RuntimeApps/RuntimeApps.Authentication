@@ -46,6 +46,30 @@ namespace RuntimeApps.Authentication.Controller {
             return new ApiResult<TUserDto>(user != null ? _mapper.Map<TUserDto>(user) : null);
         }
 
+        [Authorize]
+        [Route("password/change")]
+        [HttpPost]
+        public virtual async Task<IActionResult> ChangePassword(ChangePasswordModel input) {
+            var user = await _userManager.GetUserAsync(this.User);
+            if(user == null)
+                return new ApiResult(ResultCode.Forbidden, "NoAccess", "Cannot change password without login");
+
+            var result = await _userManager.ChangePasswordAsync(user, input.CurrentPassword, input.NewPassword);
+            return new ApiResult(result);
+        }
+
+        [Authorize]
+        [Route("password")]
+        [HttpPost]
+        public virtual async Task<IActionResult> AddPassword([FromBody] string password) {
+            var user = await _userManager.GetUserAsync(this.User);
+            if(user == null)
+                return new ApiResult(ResultCode.Forbidden, "NoAccess", "Cannot change password without login");
+
+            var result = await _userManager.AddPasswordAsync(user, password);
+            return new ApiResult(result);
+        }
+
         protected virtual Result<TUserDto, Token> MapResult(Result<TUser, Token> result) {
             return new Result<TUserDto, Token>(result.Code, result.Errors) {
                 Data = result.Data != default ? _mapper.Map<TUserDto>(result.Data) : default,

@@ -1,15 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using RuntimeApps.Authentication.Interface;
 using RuntimeApps.Authentication.Model;
 
 namespace RuntimeApps.Authentication.Controller {
-    public abstract class BaseUserRoleController<TUser>: ControllerBase 
-        where TUser: class {
+    public abstract class BaseUserRoleController<TUser>: ControllerBase
+        where TUser : class {
         private readonly IUserManager<TUser> _userManager;
 
         protected BaseUserRoleController(IUserManager<TUser> userManager) => _userManager = userManager;
@@ -18,7 +13,7 @@ namespace RuntimeApps.Authentication.Controller {
         [HttpGet]
         public virtual async Task<IActionResult> GetUserRoles(string userId) {
             var user = await _userManager.FindByIdAsync(userId);
-            if(user == null) 
+            if(user == null)
                 return UserNotFound();
 
             var result = await _userManager.GetRolesAsync(user);
@@ -27,7 +22,7 @@ namespace RuntimeApps.Authentication.Controller {
 
         [Route("{userId}/Role")]
         [HttpPost]
-        public virtual async Task<IActionResult> AddUserRoles([FromRoute]string userId, [FromBody]IEnumerable<string> roles) {
+        public virtual async Task<IActionResult> AddUserRoles([FromRoute] string userId, [FromBody] IEnumerable<string> roles) {
             var user = await _userManager.FindByIdAsync(userId);
             if(user == null)
                 return UserNotFound();
@@ -38,7 +33,7 @@ namespace RuntimeApps.Authentication.Controller {
 
         [Route("{userId}/Role/{roleName}")]
         [HttpPost]
-        public virtual async Task<IActionResult> AddUserRole([FromRoute] string userId, [FromRoute]string roleName) {
+        public virtual async Task<IActionResult> AddUserRole([FromRoute] string userId, [FromRoute] string roleName) {
             var user = await _userManager.FindByIdAsync(userId);
             if(user == null)
                 return UserNotFound();

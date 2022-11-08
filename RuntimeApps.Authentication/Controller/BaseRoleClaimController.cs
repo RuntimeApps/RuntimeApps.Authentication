@@ -15,7 +15,7 @@ namespace RuntimeApps.Authentication.Controller {
         public virtual async Task<IActionResult> GetAsync(string roleId) {
             var role = await _roleManager.FindByIdAsync(roleId);
             if(role == null)
-                return new ApiResult(ResultCode.BadRequest, "NotFound", "Role Not Found");
+                return RoleNotFound();
 
             var result = await _roleManager.GetClaimsAsync(role);
             return new ApiResult<IEnumerable<Claim>>(result);
@@ -26,7 +26,7 @@ namespace RuntimeApps.Authentication.Controller {
         public virtual async Task<IActionResult> AddAsync([FromRoute] string roleId, [FromBody] Claim claim) {
             var role = await _roleManager.FindByIdAsync(roleId);
             if(role == null)
-                return new ApiResult(ResultCode.BadRequest, "NotFound", "Role Not Found");
+                return RoleNotFound();
 
             var result = await _roleManager.AddClaimAsync(role, claim);
             return new ApiResult(result);
@@ -37,10 +37,14 @@ namespace RuntimeApps.Authentication.Controller {
         public virtual async Task<IActionResult> DeleteAsync([FromRoute] string roleId, [FromBody] Claim claim) {
             var role = await _roleManager.FindByIdAsync(roleId);
             if(role == null)
-                return new ApiResult(ResultCode.BadRequest, "NotFound", "Role Not Found");
+                return RoleNotFound();
 
             var result = await _roleManager.RemoveClaimAsync(role, claim);
             return new ApiResult(result);
+        }
+
+        protected virtual IActionResult RoleNotFound() {
+            return new ApiResult(ResultCode.BadRequest, "NotFound", "Role Not Found");
         }
 
     }

@@ -43,9 +43,8 @@ namespace RuntimeApps.Authentication {
             Services.TryAddScoped<IUserManager<TUser>, RuntimeAppsUserManager<TUser>>();
             Services.TryAddScoped<SignInManager<TUser>>();
             Services.TryAddScoped<ISignInManager<TUser>, RuntimeAppsSignInManager<TUser>>();
-            Services.TryAddScoped<RoleManager<TUser>>();
-            Services.TryAddScoped<IRoleManager<TUser>, RuntimeAppsRoleManager<TUser>>();
             Services.TryAddScoped<RoleManager<TRole>>();
+            Services.TryAddScoped<IRoleManager<TRole>, RuntimeAppsRoleManager<TRole>>();
             return this;
         }
 
