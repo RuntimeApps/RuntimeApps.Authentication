@@ -39,9 +39,10 @@ namespace RuntimeApps.Authentication.Controller {
             return new ApiResult<TRole>(role);
         }
 
+        [Route("name/{roleName}")]
         [HttpGet]
-        public virtual async Task<IActionResult> GetByNameAsync([FromQuery] string name) {
-            var role = await _roleManager.FindByNameAsync(name);
+        public virtual async Task<IActionResult> GetByNameAsync(string roleName) {
+            var role = await _roleManager.FindByNameAsync(roleName);
             return new ApiResult<TRole>(role);
         }
 
