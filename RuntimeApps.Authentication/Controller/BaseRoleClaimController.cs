@@ -18,28 +18,28 @@ namespace RuntimeApps.Authentication.Controller {
                 return RoleNotFound();
 
             var result = await _roleManager.GetClaimsAsync(role);
-            return new ApiResult<IEnumerable<Claim>>(result);
+            return new ApiResult<IEnumerable<ClaimDto>>(result.Select(c=>new ClaimDto(c)));
         }
 
         [Route("{roleId}/Claim")]
         [HttpPost]
-        public virtual async Task<IActionResult> AddAsync([FromRoute] string roleId, [FromBody] Claim claim) {
+        public virtual async Task<IActionResult> AddAsync([FromRoute] string roleId, [FromBody] ClaimDto claim) {
             var role = await _roleManager.FindByIdAsync(roleId);
             if(role == null)
                 return RoleNotFound();
 
-            var result = await _roleManager.AddClaimAsync(role, claim);
+            var result = await _roleManager.AddClaimAsync(role, claim.ToClaim());
             return new ApiResult(result);
         }
 
         [Route("{roleId}/Claim")]
         [HttpDelete]
-        public virtual async Task<IActionResult> DeleteAsync([FromRoute] string roleId, [FromBody] Claim claim) {
+        public virtual async Task<IActionResult> DeleteAsync([FromRoute] string roleId, [FromBody] ClaimDto claim) {
             var role = await _roleManager.FindByIdAsync(roleId);
             if(role == null)
                 return RoleNotFound();
 
-            var result = await _roleManager.RemoveClaimAsync(role, claim);
+            var result = await _roleManager.RemoveClaimAsync(role, claim.ToClaim());
             return new ApiResult(result);
         }
 

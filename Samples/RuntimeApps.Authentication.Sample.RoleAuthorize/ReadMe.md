@@ -6,7 +6,7 @@ ASP.Net core has deferent ways to manage authorization and one of them is [Role-
 
 ## Controller Actions
 
-There is the controllers sthat has been defined to manage users and roles.
+There is the controllers that has been defined to manage users and roles.
 
 Controller | Base Controller | Description
 --- | --- | ---
