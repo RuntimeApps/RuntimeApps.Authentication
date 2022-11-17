@@ -1,4 +1,6 @@
 ﻿using FluentAssertions;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Moq;
 using RuntimeApps.Authentication.Interface;
@@ -12,6 +14,10 @@ namespace RuntimeApps.Authentication.Test {
         private readonly Mock<IJwtProvider<IdentityUser>> _jwtProviderMock;
         private readonly Mock<IExternalLoginProvider<IdentityUser>> _externalLoginProvider1;
         private readonly Mock<IExternalLoginProvider<IdentityUser>> _externalLoginProvider2;
+        private readonly Mock<IAuthenticationHandlerProvider> _authenticationHandlerProviderMock;
+        private readonly Mock<IHttpContextAccessor> _httpContextAccessorMock;
+        private readonly Mock<IUserClaimsPrincipalFactory<IdentityUser>> _userClaimsPrincipalFactoryMock;
+        private readonly Mock<IAuthenticationSchemeProvider> _authenticationSchemeProviderMock;
         private readonly IUserAccountService<IdentityUser> _userAccountService;
 
         public UserAccountServiceTest() {
@@ -20,10 +26,22 @@ namespace RuntimeApps.Authentication.Test {
             _jwtProviderMock = new Mock<IJwtProvider<IdentityUser>>();
             _externalLoginProvider1 = new Mock<IExternalLoginProvider<IdentityUser>>();
             _externalLoginProvider2 = new Mock<IExternalLoginProvider<IdentityUser>>();
-            _userAccountService = new UserAccountService<IdentityUser, string>(_userManagerMock.Object, _signInManagerMock.Object, _jwtProviderMock.Object, new IExternalLoginProvider<IdentityUser>[] {
+            _authenticationHandlerProviderMock= new Mock<IAuthenticationHandlerProvider>();
+            _httpContextAccessorMock= new Mock<IHttpContextAccessor>();
+            _userClaimsPrincipalFactoryMock = new Mock<IUserClaimsPrincipalFactory<IdentityUser>>();
+            _authenticationSchemeProviderMock = new Mock<IAuthenticationSchemeProvider>();
+            _userAccountService = new UserAccountService<IdentityUser, string>(_userManagerMock.Object, _signInManagerMock.Object, new IExternalLoginProvider<IdentityUser>[] {
                 _externalLoginProvider1.Object,
                 _externalLoginProvider2.Object
-            });
+            },
+            _authenticationHandlerProviderMock.Object,
+            _httpContextAccessorMock.Object,
+            _userClaimsPrincipalFactoryMock.Object,
+            _authenticationSchemeProviderMock.Object,
+            _jwtProviderMock.Object);
+
+            _authenticationSchemeProviderMock.Setup(p => p.GetDefaultSignInSchemeAsync())
+                .ReturnsAsync((AuthenticationScheme)null);
         }
 
         [Fact]

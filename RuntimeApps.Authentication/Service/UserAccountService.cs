@@ -1,4 +1,6 @@
-﻿using Microsoft.AspNetCore.Identity;
+﻿using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
 using RuntimeApps.Authentication.Interface;
 using RuntimeApps.Authentication.Model;
 
@@ -9,16 +11,28 @@ namespace RuntimeApps.Authentication.Service {
         private readonly IUserManager<TUser> _userManager;
         private readonly ISignInManager<TUser> _signInManager;
         private readonly IJwtProvider<TUser> _jwtUtils;
+        private readonly IAuthenticationSchemeProvider _authenticationSchemeProvider;
+        private readonly IAuthenticationHandlerProvider _authenticationHandlerProvider;
+        private readonly IHttpContextAccessor _contextAccessor;
+        private readonly IUserClaimsPrincipalFactory<TUser> _userClaimsPrincipalFactory;
         private readonly IEnumerable<IExternalLoginProvider<TUser>> _externalLoginProviders;
 
         public UserAccountService(IUserManager<TUser> userManager,
                                   ISignInManager<TUser> signInManager,
-                                  IJwtProvider<TUser> jwtUtils,
-                                  IEnumerable<IExternalLoginProvider<TUser>> externalLoginProviders) {
+                                  IEnumerable<IExternalLoginProvider<TUser>> externalLoginProviders,
+                                  IAuthenticationHandlerProvider authenticationHandlerProvider,
+                                  IHttpContextAccessor contextAccessor,
+                                  IUserClaimsPrincipalFactory<TUser> userClaimsPrincipalFactory,
+                                  IAuthenticationSchemeProvider authenticationSchemeProvider,
+                                  IJwtProvider<TUser> jwtUtils = null) {
             _userManager = userManager;
             _signInManager = signInManager;
             _jwtUtils = jwtUtils;
             _externalLoginProviders = externalLoginProviders;
+            _authenticationHandlerProvider = authenticationHandlerProvider;
+            _contextAccessor = contextAccessor;
+            _userClaimsPrincipalFactory = userClaimsPrincipalFactory;
+            _authenticationSchemeProvider = authenticationSchemeProvider;
         }
 
         public virtual async Task<Result<TUser, Token>> ExternalLoginAsync(string providerName, string token) {
@@ -54,11 +68,7 @@ namespace RuntimeApps.Authentication.Service {
             if(user == null)
                 return new Result<TUser, Token>(ResultCode.BadRequest, Result.CreateErrors("Add_Error", "User cannot added"));
 
-            var authToken = await _jwtUtils.GenerateTokenAsync(user);
-            return new Result<TUser, Token>() {
-                Data = user,
-                Meta = authToken
-            };
+            return await GenerateTokenAsync(user);
         }
 
         public virtual async Task<Result<TUser, Token>> LoginAsync(string userName, string password) {
@@ -71,8 +81,7 @@ namespace RuntimeApps.Authentication.Service {
                 return GetIdentityError(signInResult);
             }
 
-            var token = await _jwtUtils.GenerateTokenAsync(userInfo);
-            return new Result<TUser, Token>(userInfo, token);
+            return await GenerateTokenAsync(userInfo);
         }
 
         public virtual async Task<Result<TUser, Token>> RegisterAsync(TUser user, string password) {
@@ -84,11 +93,10 @@ namespace RuntimeApps.Authentication.Service {
                 return new Result<TUser, Token>(ResultCode.BadRequest, createResult.Errors);
             }
 
-            var token = await _jwtUtils.GenerateTokenAsync(user);
-            return new Result<TUser, Token>(user, token);
+            return await GenerateTokenAsync(user);
         }
 
-        private Result<TUser, Token> GetIdentityError(SignInResult signInResult) {
+        protected virtual Result<TUser, Token> GetIdentityError(SignInResult signInResult) {
             ResultCode code = ResultCode.BadRequest;
             var description = "Username or password is incorrect";
             if(signInResult.IsNotAllowed) {
@@ -104,6 +112,29 @@ namespace RuntimeApps.Authentication.Service {
                 code = ResultCode.Accepted;
             }
             return new Result<TUser, Token>(code, Result.CreateErrors(signInResult.ToString(), description));
+        }
+
+        protected virtual async Task<Result<TUser, Token>> GenerateTokenAsync(TUser user) {
+            bool hasHandler = await HasHandlerAsync();
+            if(hasHandler) {
+                var claims = await _userClaimsPrincipalFactory.CreateAsync(user);
+                await _contextAccessor.HttpContext.SignInAsync(claims);
+                return new Result<TUser, Token>(user, null);
+            }
+
+            var token = await _jwtUtils.GenerateTokenAsync(user);
+            return new Result<TUser, Token>(user, token);
+        }
+
+        private async Task<bool> HasHandlerAsync() {
+            var defaultScheme = await _authenticationSchemeProvider.GetDefaultSignInSchemeAsync();
+            if(defaultScheme?.Name == null)
+                return false;
+
+            var handler = await _authenticationHandlerProvider.GetHandlerAsync(_contextAccessor.HttpContext, defaultScheme.Name);
+            if(handler == null)
+                return false;
+            return handler is IAuthenticationSignInHandler;
         }
 
     }

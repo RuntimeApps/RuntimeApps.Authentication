@@ -20,7 +20,8 @@ Sample | Description
 [Custom Store](./Samples/RuntimeApps.Authentication.Sample.CustomStore/) | Sample of implementing identity stores
 [Role Authorize](./Samples/RuntimeApps.Authentication.Sample.RoleAuthorize/) | Sample of user role management and authroization based on role-base authorization.
 [Claim Authorize](./Samples/RuntimeApps.Authentication.Sample.ClaimAuthorize/) | Sample of managing roles and claims of user. Also, implementing a sample of claim-based authorization in ASP.Net core
-Custom claim and user Cookie | Sample of add custom claim to jwt token and using user cookies as jwt store.
+[Cookie Authentication](./Samples/RuntimeApps.Authentication.Sample.CookieAuthentication/) | Sample of use cookie authentication for handling authentication and authorization.
+Custom claim | Sample of add custom claim to jwt token and using user cookies as jwt store.
 Email Verification | Verify user email by sending an email to user for validation
 Two step authentication | Enable two step authentication for some users
 Protect personal data | Protect personal user data in database by encrypt user data
