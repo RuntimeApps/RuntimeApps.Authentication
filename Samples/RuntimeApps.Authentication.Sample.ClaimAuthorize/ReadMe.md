@@ -22,7 +22,6 @@ RuntimeApps.Authentication library implements controllers that might be needed i
 
 Controller | Base Controller | Description
 --- | --- | ---
-[AccountController](./Controllers/AccountController.cs) | `BaseAccountController` | Manage user account actions. This controller has been called by all users while they want to view or manage their account.
 [UserController](./Controllers/UserController.cs) | `BaseUserController` | Manage users of system. This user return user information by their id or username. In this sample the users that have `UserManager` claim with value 1 (ViewUser) or higher can access this controller actions.
 [UserRoleController](./Controllers/UserRoleController.cs) | `BaseUserRoleController` | Manage user roles. This controller has actions of managing user roles. In this sample the users that have `UserManager` claim with value 3 (ManageUserRoles) or higher can access this controller actions.
 [UserClaimController](./Controllers/UserClaimController.cs) | `BaseUserClaimController` | Manage user claims. Claim can be added to user by this controller. In this sample the users that have `UserManager` claim with value 3 (ManageUserRoles) or higher can access this controller actions.

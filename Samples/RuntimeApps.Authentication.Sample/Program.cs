@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using RuntimeApps.Authentication.Controller;
 using RuntimeApps.Authentication.EF.Extensions;
 using RuntimeApps.Authentication.Extensions;
 using RuntimeApps.Authentication.Model;
@@ -97,6 +98,15 @@ if(app.Environment.IsDevelopment()) {
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
+
+app.MapGroup("api")
+    .WithTags("Authentication APIs")
+    .MapLoginApi<IdentityUser<int>, IdentityUserDto<int>, int>()
+    .MapRegisterApi<IdentityUser<int>, IdentityUserDto<int>, int>();
+
+app.MapGroup("api/account")
+    .WithTags("Account APIs")
+    .MapAccountApi<IdentityUser<int>, IdentityUserDto<int>, int>();
 
 app.MapControllerRoute(
     name: "default",

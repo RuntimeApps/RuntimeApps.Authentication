@@ -9,6 +9,7 @@ using RuntimeApps.Authentication.EF.Extensions;
 using System.Text.Json.Serialization;
 using Microsoft.IdentityModel.Tokens;
 using RuntimeApps.Authentication.Interface;
+using RuntimeApps.Authentication.Controller;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -83,6 +84,15 @@ if(app.Environment.IsDevelopment()) {
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
+
+app.MapGroup("api")
+    .WithTags("Authentication APIs")
+    .MapLoginApi<IdentityUser<int>, IdentityUserDto<int>, int>()
+    .MapRegisterApi<IdentityUser<int>, IdentityUserDto<int>, int>();
+
+app.MapGroup("api/account")
+    .WithTags("Account APIs")
+    .MapAccountApi<IdentityUser<int>, IdentityUserDto<int>, int>();
 
 app.MapControllerRoute(
     name: "default",

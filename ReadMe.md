@@ -44,9 +44,7 @@ Or you can install other implementations of the store [link](https://github.com/
 
 ### Create needed classes
 
-1. Create `AccountController` class which inherit `BaseAccountController` and define the route and other implementation if you need them.
-
-2. Create your own `ApplicationDbContext` and inherent `IdentityDbContext`
+Create your own `ApplicationDbContext` and inherent `IdentityDbContext`
 
 ### Configure Services
 
@@ -82,6 +80,19 @@ Configure AutoMapper:
 builder.Services.AddAutoMapper(conf => {
     conf.AddProfile<IdentityUserMapper<IdentityUser, IdentityUserDto, string>>();
 });
+```
+
+Add endpoints (There are more endpoints in samples):
+
+```cs
+app.MapGroup("api")
+    .WithTags("Authentication APIs")
+    .MapLoginApi<IdentityUser, IdentityRole, string>()
+    .MapRegisterApi<IdentityUser, IdentityRole, string>();
+
+app.MapGroup("api/account")
+    .WithTags("Account APIs")
+    .MapAccountApi<IdentityUser, IdentityRole, string>();
 ```
 
 You can add more services and customize services. Also, there are some [samples](./Samples/) in this repository.

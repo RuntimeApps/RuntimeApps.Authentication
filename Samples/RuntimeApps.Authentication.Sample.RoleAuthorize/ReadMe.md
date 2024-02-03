@@ -10,7 +10,6 @@ There is the controllers that has been defined to manage users and roles.
 
 Controller | Base Controller | Description
 --- | --- | ---
-[AccountController](./Controllers/AccountController.cs) | `BaseAccountController` | Manage user account actions. In this sample create account overrided to access only by users that have `UserManager` role.
 [RoleController](./Controllers/RoleController.cs) | `BaseRoleController` | Manage roles of system. In this sample roles are static and added on initialize database, so the create/update/delete function overrided to response as not implemented
 [UserController](./Controllers/UserController.cs) | `BaseUserController` | Manage users of system. This controller has actions of admin or UserManager roles need. Each role that need to view user information should authorzie to this controller.
 [UserRoleController](./Controllers/UserRoleController.cs) | `BaseUserRoleController` | Manage user roles. This controller has actions of managing user roles. Each role that needs to manage user roles should authorize in this controller.
