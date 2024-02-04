@@ -16,15 +16,42 @@ In this sample each claim value has all permisions before there number. For exam
 
 In Asp.Net core identity users can have claims as same as roles. So each user has sum of own claims and role claims which will be added to created jwt token. 
 
-## Controller Actions
+```cs
 
-RuntimeApps.Authentication library implements controllers that might be needed in user managements. You could add each controller to your solution by implemeting them as base class.
+app.MapGroup("api")
+    .WithTags("Authentication APIs")
+    .MapLoginApi<IdentityUser<int>, IdentityUserDto<int>, int>()
+    .MapRegisterApi<IdentityUser<int>, IdentityUserDto<int>, int>();
 
-Controller | Base Controller | Description
---- | --- | ---
-[UserController](./Controllers/UserController.cs) | `BaseUserController` | Manage users of system. This user return user information by their id or username. In this sample the users that have `UserManager` claim with value 1 (ViewUser) or higher can access this controller actions.
-[UserRoleController](./Controllers/UserRoleController.cs) | `BaseUserRoleController` | Manage user roles. This controller has actions of managing user roles. In this sample the users that have `UserManager` claim with value 3 (ManageUserRoles) or higher can access this controller actions.
-[UserClaimController](./Controllers/UserClaimController.cs) | `BaseUserClaimController` | Manage user claims. Claim can be added to user by this controller. In this sample the users that have `UserManager` claim with value 3 (ManageUserRoles) or higher can access this controller actions.
-[RoleController](./Controllers/RoleController.cs) | `BaseRoleController` | Manage roles of system. In this sample users that have `UserManager` claim with value 4 (ManageRoles) or higher can access this controller actions.
-[RoleClaimController](./Controllers/RoleClaimController.cs) | `BaseRoleClaimController` | Manage role claims. In this sample users that have `UserManager` claim with value 5 (ManageRoleClaims) can access this controller actions.
-[ClaimController](./Controllers/ClaimController.cs) | | Claim defenition in this sample is static, so a controller has been implemented to show the claim defenition to the API caller.
+app.MapGroup("api/account")
+    .WithTags("Account APIs")
+    .MapAccountApi<IdentityUser<int>, IdentityUserDto<int>, int>();
+
+app.MapGroup("api/user")
+    .WithTags("User View")
+    .RequireAuthorization(PolicyConsts.ViewUserPolicy)
+    .MapUserGetApi<IdentityUser<int>, IdentityUserDto<int>>();
+
+app.MapGroup("api/user")
+    .WithTags("User Manage")
+    .RequireAuthorization(PolicyConsts.ManageUserRolePolicy)
+    .MapUserClaimGetApi<IdentityUser<int>>()
+    .MapUserClaimManageApi<IdentityUser<int>>()
+    .MapUserRoleGetApi<IdentityUser<int>>()
+    .MapUserRoleManageApi<IdentityUser<int>>();
+
+app.MapGroup("api/role")
+    .WithTags("Role Claim")
+    .RequireAuthorization(PolicyConsts.ManageRoleClaimPolicy)
+    .MapRoleClaimGetApi<IdentityRole<int>>()
+    .MapRoleClaimManageApi<IdentityRole<int>>();
+
+app.MapGroup("api/role")
+    .WithTags("Role")
+    .RequireAuthorization(PolicyConsts.ManageRolePolicy)
+    .MapRoleGetApi<IdentityRole<int>>()
+    .MapRoleManageApi<IdentityRole<int>>();
+
+app.MapGet("api/claim", () => ClaimConsts.GetAllClaimData());
+
+```

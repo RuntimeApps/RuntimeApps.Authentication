@@ -94,6 +94,33 @@ app.MapGroup("api/account")
     .WithTags("Account APIs")
     .MapAccountApi<IdentityUser<int>, IdentityUserDto<int>, int>();
 
+app.MapGroup("api/user")
+    .WithTags("User View")
+    .RequireAuthorization(PolicyConsts.ViewUserPolicy)
+    .MapUserGetApi<IdentityUser<int>, IdentityUserDto<int>>();
+
+app.MapGroup("api/user")
+    .WithTags("User Manage")
+    .RequireAuthorization(PolicyConsts.ManageUserRolePolicy)
+    .MapUserClaimGetApi<IdentityUser<int>>()
+    .MapUserClaimManageApi<IdentityUser<int>>()
+    .MapUserRoleGetApi<IdentityUser<int>>()
+    .MapUserRoleManageApi<IdentityUser<int>>();
+
+app.MapGroup("api/role")
+    .WithTags("Role Claim")
+    .RequireAuthorization(PolicyConsts.ManageRoleClaimPolicy)
+    .MapRoleClaimGetApi<IdentityRole<int>>()
+    .MapRoleClaimManageApi<IdentityRole<int>>();
+
+app.MapGroup("api/role")
+    .WithTags("Role")
+    .RequireAuthorization(PolicyConsts.ManageRolePolicy)
+    .MapRoleGetApi<IdentityRole<int>>()
+    .MapRoleManageApi<IdentityRole<int>>();
+
+app.MapGet("api/claim", () => ClaimConsts.GetAllClaimData());
+
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller}/{action=Index}/{id?}");

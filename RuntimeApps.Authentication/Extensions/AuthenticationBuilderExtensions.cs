@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 
 namespace RuntimeApps.Authentication.Extensions {
-    public static class AuthenticationBuilderExtension {
+    public static class AuthenticationBuilderExtensions {
         public static RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddRuntimeAppsAuthentication<TUser, TRole, TKey>(this AuthenticationBuilder builder)
             where TUser : IdentityUser<TKey>, new()
             where TRole : IdentityRole<TKey>

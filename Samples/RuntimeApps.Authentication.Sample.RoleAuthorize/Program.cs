@@ -80,12 +80,28 @@ app.UseAuthorization();
 
 app.MapGroup("api")
     .WithTags("Authentication APIs")
-    .MapLoginApi<IdentityUser<int>, IdentityUserDto<int>, int>()
-    .MapRegisterApi<IdentityUser<int>, IdentityUserDto<int>, int>();
+    .MapLoginApi<IdentityUser<int>, IdentityUserDto<int>, int>();
 
 app.MapGroup("api/account")
     .WithTags("Account APIs")
     .MapAccountApi<IdentityUser<int>, IdentityUserDto<int>, int>();
+
+app.MapGroup("api/user")
+    .WithTags("User View")
+    .RequireAuthorization(config => config.RequireRole(RoleConsts.UserViewRole, RoleConsts.UserManagerRole))
+    .MapUserGetApi<IdentityUser<int>, IdentityUserDto<int>>();
+
+app.MapGroup("api/role")
+    .WithTags("Role View")
+    .RequireAuthorization(config => config.RequireRole(RoleConsts.UserViewRole, RoleConsts.UserManagerRole))
+    .MapRoleGetApi<IdentityRole<int>>();
+
+app.MapGroup("api/user")
+    .WithTags("User Manage")
+    .RequireAuthorization(config => config.RequireRole(RoleConsts.UserManagerRole))
+    .MapRegisterApi<IdentityUser<int>, IdentityUserDto<int>, int>()
+    .MapUserRoleGetApi<IdentityUser<int>>()
+    .MapUserRoleManageApi<IdentityUser<int>>();
 
 app.MapControllerRoute(
     name: "default",
