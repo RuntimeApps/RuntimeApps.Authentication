@@ -1,6 +1,5 @@
 ﻿using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -82,9 +81,9 @@ namespace RuntimeApps.Authentication {
             return this;
         }
 
-        public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddStores<TUserStoreImpl, TRoleStoreImpl>() 
-            where TUserStoreImpl: UserStoreBase<TUser, TRole, TKey, IdentityUserClaim<TKey>, IdentityUserRole<TKey>, IdentityUserLogin<TKey>, IdentityUserToken<TKey>, IdentityRoleClaim<TKey>>, IProtectedUserStore<TUser>
-            where TRoleStoreImpl: class, IRoleClaimStore<TRole> {
+        public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddStores<TUserStoreImpl, TRoleStoreImpl>()
+            where TUserStoreImpl : UserStoreBase<TUser, TRole, TKey, IdentityUserClaim<TKey>, IdentityUserRole<TKey>, IdentityUserLogin<TKey>, IdentityUserToken<TKey>, IdentityRoleClaim<TKey>>, IProtectedUserStore<TUser>
+            where TRoleStoreImpl : class, IRoleClaimStore<TRole> {
             Services.TryAddScoped<IUserStore<TUser>, TUserStoreImpl>();
             Services.TryAddScoped<IUserLoginStore<TUser>, TUserStoreImpl>();
             Services.TryAddScoped<IUserClaimStore<TUser>, TUserStoreImpl>();
