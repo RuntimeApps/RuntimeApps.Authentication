@@ -15,6 +15,7 @@ builder.Services.AddSingleton<IStoreUnitOfWork, StoreUnitOfWork>();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddRuntimeAppsAuthentication<IdentityUser, IdentityRole, string>()
     .AddStores<CustomUserStore, CustomRoleStore>()
+    .AddDefaultUserMapper<IdentityUserDto>()
     .UseJwt(JwtBearerDefaults.AuthenticationScheme, option => {
         SymmetricSecurityKey signingKey = new(Encoding.ASCII.GetBytes(builder.Configuration["Jwt:Key"]));
         option.RequireHttpsMetadata = false;
@@ -34,10 +35,6 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     })
     .AddValidators();
-
-builder.Services.AddAutoMapper(conf => {
-    conf.AddProfile<IdentityUserMapper<IdentityUser, IdentityUserDto, string>>();
-});
 
 builder.Services.AddControllers()
     .AddJsonOptions(option => {

@@ -19,6 +19,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlSer
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddRuntimeAppsAuthentication<User, Role, int>()
     .AddEfStores<ApplicationDbContext, User, Role, int>()
+    .AddUserMapper<UserDto, UserMapper>()
     .UseJwt(JwtBearerDefaults.AuthenticationScheme, option => {
         SymmetricSecurityKey signingKey = new(Encoding.ASCII.GetBytes(builder.Configuration["Jwt:Key"]));
         option.RequireHttpsMetadata = false;
@@ -67,10 +68,6 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             return user;
         };
     });
-
-builder.Services.AddAutoMapper(conf => {
-    conf.AddProfile<IdentityUserMapper<User, UserDto, int>>();
-});
 
 builder.Services.AddControllers()
     .AddJsonOptions(option => {

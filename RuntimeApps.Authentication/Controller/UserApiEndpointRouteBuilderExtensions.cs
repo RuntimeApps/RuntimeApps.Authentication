@@ -1,8 +1,6 @@
-﻿using AutoMapper;
-using Microsoft.AspNetCore.Builder;
+﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.DependencyInjection;
 using RuntimeApps.Authentication.Interface;
 
 namespace RuntimeApps.Authentication.Controller {
@@ -12,16 +10,14 @@ namespace RuntimeApps.Authentication.Controller {
             where TUserDto : class {
             var routeGroup = endpoints.MapGroup("");
 
-            IMapper mapper = endpoints.ServiceProvider.GetRequiredService<IMapper>();
-
-            routeGroup.MapGet("{userId}", async Task<TUserDto> ([FromRoute] string userId, IUserManager<TUser> userManager) => {
+            routeGroup.MapGet("{userId}", async Task<TUserDto> ([FromRoute] string userId, IUserManager<TUser> userManager, [FromServices] IUserMapper<TUser, TUserDto> mapper) => {
                 var user = await userManager.FindByIdAsync(userId);
-                return user != default ? mapper.Map<TUserDto>(user) : default;
+                return user != default ? mapper.ToDto(user) : default;
             });
 
-            routeGroup.MapGet("/", async Task<TUserDto> ([FromQuery] string userName, IUserManager<TUser> userManager) => {
+            routeGroup.MapGet("/", async Task<TUserDto> ([FromQuery] string userName, IUserManager<TUser> userManager, [FromServices] IUserMapper<TUser, TUserDto> mapper) => {
                 var user = await userManager.FindByNameAsync(userName);
-                return user != default ? mapper.Map<TUserDto>(user) : default;
+                return user != default ? mapper.ToDto(user) : default;
             });
 
             return endpoints;

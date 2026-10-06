@@ -12,14 +12,15 @@ using RuntimeApps.Authentication.Sample;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(connectionString));
+builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseInMemoryDatabase("TestDatabase"));
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     //Add default services of RuntimeApps application
     .AddRuntimeAppsAuthentication<IdentityUser<int>, IdentityRole<int>, int>()
     //Add implemetation of entity framework core user stores.
     .AddEfStores<ApplicationDbContext, IdentityUser<int>, IdentityRole<int>, int>()
+    // Add default mapper between IdentityUser and IdentityUserDto
+    .AddDefaultUserMapper<IdentityUserDto<int>>()
     //Add Jwt authentication serices to application
     .UseJwt(JwtBearerDefaults.AuthenticationScheme, option => {
         SymmetricSecurityKey signingKey = new(Encoding.ASCII.GetBytes(builder.Configuration["Jwt:Key"]));
@@ -62,11 +63,6 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         // Mapper of microsot model to user model
         option.Mapper = (data) => MicrosoftExternalLoginOption<IdentityUser<int>>.UserIdentityMapper<IdentityUser<int>, int>(data);
     });
-
-// Add Automapper with IdentityUserMapper. If you want to have your output model, you can override this class.
-builder.Services.AddAutoMapper(conf => {
-    conf.AddProfile<IdentityUserMapper<IdentityUser<int>, IdentityUserDto<int>, int>>();
-});
 
 builder.Services.AddControllers()
     .AddJsonOptions(option => {

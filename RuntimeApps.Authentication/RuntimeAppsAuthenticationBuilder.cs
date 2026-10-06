@@ -44,6 +44,8 @@ namespace RuntimeApps.Authentication {
             Services.TryAddScoped<ISignInManager<TUser>, RuntimeAppsSignInManager<TUser>>();
             Services.TryAddScoped<RoleManager<TRole>>();
             Services.TryAddScoped<IRoleManager<TRole>, RuntimeAppsRoleManager<TRole>>();
+
+            AddBuiltInUserMappers();
             return this;
         }
 
@@ -52,6 +54,35 @@ namespace RuntimeApps.Authentication {
             Services.Configure(configureOptions);
             Authentication.AddJwtBearer(authenticationScheme, configureOptions);
             return this;
+        }
+
+        /// <summary>
+        /// Registers the mapper used by the API endpoints to convert between <typeparamref name="TUser"/> and <typeparamref name="TUserDto"/>.
+        /// Replaces any mapper already registered for the same DTO (including the built-in one), so the last call wins.
+        /// </summary>
+        public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddUserMapper<TUserDto, TMapper>(ServiceLifetime lifetime = ServiceLifetime.Scoped)
+            where TUserDto : class
+            where TMapper : class, IUserMapper<TUser, TUserDto> {
+            Services.Replace(ServiceDescriptor.Describe(typeof(IUserMapper<TUser, TUserDto>), typeof(TMapper), lifetime));
+            return this;
+        }
+
+        /// <summary>
+        /// Registers a mapper built from two delegates. Use it for quick inline mapping or to wrap any mapper library.
+        /// </summary>
+        public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddUserMapper<TUserDto>(Func<TUser, TUserDto> toDto, Func<TUserDto, TUser> toUser)
+            where TUserDto : class {
+            Services.Replace(ServiceDescriptor.Singleton<IUserMapper<TUser, TUserDto>>(new DelegateUserMapper<TUser, TUserDto>(toDto, toUser)));
+            return this;
+        }
+
+        /// <summary>
+        /// Registers <see cref="DefaultIdentityUserMapper{TUser, TUserDto, TKey}"/> for a DTO derived from <see cref="IdentityUserDto{TKey}"/>.
+        /// <see cref="IdentityUserDto{TKey}"/> (and <see cref="IdentityUserDto"/> for string keys) are already covered without calling this.
+        /// </summary>
+        public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddDefaultUserMapper<TUserDto>()
+            where TUserDto : IdentityUserDto<TKey>, new() {
+            return AddUserMapper<TUserDto, DefaultIdentityUserMapper<TUser, TUserDto, TKey>>();
         }
 
         public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddGoogleExternalLogin(Action<GoogleExternalLoginOption<TUser>> option) {
@@ -103,6 +134,19 @@ namespace RuntimeApps.Authentication {
             Services.TryAddScoped<IRoleStore<TRole>, TRoleStoreImpl>();
             Services.TryAddScoped<IRoleClaimStore<TRole>, TRoleStoreImpl>();
             return this;
+        }
+
+        // Out-of-the-box mappers, so the endpoints work without any mapper setup.
+        // They are TryAdd, so AddUserMapper / AddDefaultUserMapper always override them.
+        private void AddBuiltInUserMappers() {
+            Services.TryAddScoped<IUserMapper<TUser, IdentityUserDto<TKey>>, DefaultIdentityUserMapper<TUser, IdentityUserDto<TKey>, TKey>>();
+
+            // IdentityUserDto (non-generic) only exists for string keys
+            if(typeof(TKey) == typeof(string)) {
+                Services.TryAdd(ServiceDescriptor.Scoped(
+                    typeof(IUserMapper<TUser, IdentityUserDto>),
+                    typeof(DefaultIdentityUserMapper<,,>).MakeGenericType(typeof(TUser), typeof(IdentityUserDto), typeof(TKey))));
+            }
         }
     }
 }

@@ -1,14 +1,12 @@
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using RuntimeApps.Authentication.Extensions;
-using RuntimeApps.Authentication.EF.Extensions;
-using RuntimeApps.Authentication.Sample.CookieAuthentication;
-using System.Text;
-using Microsoft.IdentityModel.Tokens;
-using RuntimeApps.Authentication.Model;
-using System.Text.Json.Serialization;
 using RuntimeApps.Authentication.Controller;
+using RuntimeApps.Authentication.EF.Extensions;
+using RuntimeApps.Authentication.Extensions;
+using RuntimeApps.Authentication.Model;
+using RuntimeApps.Authentication.Sample.CookieAuthentication;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,11 +17,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddCookie(JwtBearerDefaults.AuthenticationScheme)
     .AddRuntimeAppsAuthentication<IdentityUser<int>, IdentityRole<int>, int>()
     .AddEfStores<ApplicationDbContext, IdentityUser<int>, IdentityRole<int>, int>()
+    .AddDefaultUserMapper<IdentityUserDto<int>>()
     .AddValidators();
-
-builder.Services.AddAutoMapper(conf => {
-    conf.AddProfile<IdentityUserMapper<IdentityUser<int>, IdentityUserDto<int>, int>>();
-});
 
 builder.Services.AddControllers()
     .AddJsonOptions(option => {

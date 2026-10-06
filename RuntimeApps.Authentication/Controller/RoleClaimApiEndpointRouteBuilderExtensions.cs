@@ -1,22 +1,17 @@
-﻿using AutoMapper;
-using Microsoft.AspNetCore.Builder;
+﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.DependencyInjection;
 using RuntimeApps.Authentication.Extensions;
 using RuntimeApps.Authentication.Interface;
 using RuntimeApps.Authentication.Model;
 
-namespace RuntimeApps.Authentication.Controller
-{
+namespace RuntimeApps.Authentication.Controller {
     public static class RoleClaimApiEndpointRouteBuilderExtensions {
         public static IEndpointRouteBuilder MapRoleClaimGetApi<TRole>(this IEndpointRouteBuilder endpoints)
             where TRole : class {
             var routeGroup = endpoints.MapGroup("");
-
-            IMapper mapper = endpoints.ServiceProvider.GetRequiredService<IMapper>();
 
             routeGroup.MapGet("{roleId}/Claim", async Task<Results<Ok<IEnumerable<ClaimDto>>, ValidationProblem>> ([FromRoute] string roleId, IRoleManager<TRole> roleManager, HttpContext httpContext) => {
                 var role = await roleManager.FindByIdAsync(roleId);
@@ -33,8 +28,6 @@ namespace RuntimeApps.Authentication.Controller
         public static IEndpointRouteBuilder MapRoleClaimManageApi<TRole>(this IEndpointRouteBuilder endpoints)
             where TRole : class {
             var routeGroup = endpoints.MapGroup("");
-
-            IMapper mapper = endpoints.ServiceProvider.GetRequiredService<IMapper>();
 
             routeGroup.MapPost("{roleId}/Claim", async Task<Results<Ok, ValidationProblem>> ([FromRoute] string roleId, [FromBody] ClaimDto claim, IRoleManager<TRole> roleManager, HttpContext httpContext) => {
                 var role = await roleManager.FindByIdAsync(roleId);
