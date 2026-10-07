@@ -61,6 +61,8 @@ jobs:
     if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     needs: [ run_test,create_nuget ]
+    permissions:
+      id-token: write   # lets the job request a GitHub OIDC token
     steps:
       # Download the NuGet package created in the previous job
       - uses: actions/download-artifact@v8
@@ -72,8 +74,15 @@ jobs:
       - name: Setup .NET Core
         uses: actions/setup-dotnet@v6
 
+      # Exchange the OIDC token for a short-lived NuGet API key
+      - name: NuGet login (OIDC)
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}   # nuget.org profile name, NOT your email
+
       # Publish all NuGet packages to NuGet.org
       # Use --skip-duplicate to prevent errors if a package with the same version already exists.
       # If you retry a failed workflow, already published packages will be skipped without error.
       - name: Publish NuGet package
-        run: dotnet nuget push "${{ env.NuGetDirectory }}/*.nupkg" --source "${{ vars.NUGET_SOURCE }}" --skip-duplicate --api-key "${{ secrets.NUGET_APIKEY }}"
+        run: dotnet nuget push "${{ env.NuGetDirectory }}/*.nupkg" --source https://api.nuget.org/v3/index.json --skip-duplicate --api-key "${{ steps.login.outputs.NUGET_API_KEY }}"
