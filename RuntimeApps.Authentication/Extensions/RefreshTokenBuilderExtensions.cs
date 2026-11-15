@@ -1,5 +1,3 @@
-using System.Threading.RateLimiting;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
@@ -44,22 +42,9 @@ namespace RuntimeApps.Authentication.Extensions {
                     "Allowed origins must be absolute HTTP or HTTPS origins without a path, query, or fragment.")
                 .ValidateOnStart();
 
-            builder.Services.AddRateLimiter(rateLimiterOptions => {
-                rateLimiterOptions.RejectionStatusCode = Microsoft.AspNetCore.Http.StatusCodes.Status429TooManyRequests;
-                rateLimiterOptions.AddPolicy(RefreshTokenOptions.RateLimitPolicyName, context => {
-                    var limit = context.RequestServices.GetRequiredService<Microsoft.Extensions.Options.IOptions<RefreshTokenOptions>>().Value.RefreshRequestsPerMinute;
-                    var partitionKey = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-                    return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ => new FixedWindowRateLimiterOptions {
-                        PermitLimit = limit,
-                        Window = TimeSpan.FromMinutes(1),
-                        QueueLimit = 0,
-                        AutoReplenishment = true
-                    });
-                });
-            });
-
             builder.Services.TryAddSingleton(TimeProvider.System);
             builder.Services.TryAddScoped<IRefreshTokenService<TKey>, RefreshTokenService<TKey>>();
+            builder.Services.TryAddSingleton<IRefreshTokenRequestLimiter, RefreshTokenRequestLimiter>();
             builder.Services.TryAddEnumerable(
                 ServiceDescriptor.Singleton<IHostedService, RefreshTokenStoreStartupValidator<TKey>>());
             return builder;
