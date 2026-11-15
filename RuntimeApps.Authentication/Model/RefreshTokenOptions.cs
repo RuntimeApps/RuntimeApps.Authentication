@@ -16,5 +16,8 @@ namespace RuntimeApps.Authentication.Model {
 
         public SameSiteMode CookieSameSite { get; set; } = SameSiteMode.Strict;
         public bool CookieSecure { get; set; } = true;
+
+        /// <summary>Additional exact origins permitted to use cookie-based refresh/logout endpoints.</summary>
+        public IList<string> AllowedOrigins { get; set; } = new List<string>();
     }
 }
