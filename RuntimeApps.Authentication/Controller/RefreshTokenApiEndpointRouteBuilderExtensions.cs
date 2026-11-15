@@ -21,7 +21,7 @@ namespace RuntimeApps.Authentication.Controller {
             routes.MapPost("refresh", async (HttpContext context,
                 IUserManager<TUser> userManager,
                 IRefreshTokenService<TKey> refreshTokenService,
-                IJwtProvider<TUser> jwtProvider,
+                IServiceProvider services,
                 IUserClaimsPrincipalFactory<TUser> claimsFactory,
                 IAuthenticationSchemeProvider schemeProvider,
                 IAuthenticationHandlerProvider handlerProvider,
@@ -52,6 +52,11 @@ namespace RuntimeApps.Authentication.Controller {
                     return Results.NoContent();
                 }
 
+                var jwtProvider = services.GetService<IJwtProvider<TUser>>();
+                if(jwtProvider == null) {
+                    await refreshTokenService.RevokeAsync(session.RefreshToken, context.RequestAborted);
+                    return Results.Problem("JWT authentication is not configured.", statusCode: StatusCodes.Status500InternalServerError);
+                }
                 var accessToken = await jwtProvider.GenerateTokenAsync(user);
                 accessToken.RefreshToken = session.RefreshToken;
                 accessToken.RefreshTokenExpireDate = session.ExpiresAt;
