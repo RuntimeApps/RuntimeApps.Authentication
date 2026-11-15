@@ -10,6 +10,8 @@ namespace RuntimeApps.Authentication.EF.Model {
             builder.ToTable("AuthenticationRefreshTokens");
             builder.HasKey(token => token.Id);
             builder.Property(token => token.UserId).IsRequired();
+            if(typeof(TKey) == typeof(string))
+                builder.Property(token => token.UserId).HasMaxLength(450);
             builder.Property(token => token.FamilyId).IsRequired();
             // Store UTC DateTimeOffset values as binary ticks so expiry predicates are
             // supported consistently by relational providers such as SQLite.
@@ -20,6 +22,7 @@ namespace RuntimeApps.Authentication.EF.Model {
             builder.Property(token => token.SessionName).HasMaxLength(100);
             builder.HasIndex(token => token.TokenHash).IsUnique();
             builder.HasIndex(token => new { token.UserId, token.FamilyId });
+            builder.HasIndex(token => new { token.UserId, token.RevokedAt });
             builder.HasIndex(token => new { token.FamilyId, token.RevokedAt });
             builder.HasIndex(token => token.ExpiresAt);
         }
