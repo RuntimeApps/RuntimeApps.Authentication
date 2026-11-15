@@ -75,6 +75,20 @@ namespace RuntimeApps.Authentication.Test {
         }
 
         [Fact]
+        public async Task RotateAsync_ConcurrentReuseDoesNotLeaveFamilyActive() {
+            var service = CreateService();
+            var session = await service.CreateSessionAsync("user-1");
+
+            var results = await Task.WhenAll(
+                service.RotateAsync(session.RefreshToken),
+                service.RotateAsync(session.RefreshToken));
+
+            Assert.Single(results.Where(result => result != null));
+            Assert.All(_store.Tokens.Where(token => token.FamilyId == session.SessionId),
+                token => Assert.NotNull(token.RevokedAt));
+        }
+
+        [Fact]
         public async Task RotateAsync_RejectsExpiredToken() {
             var service = CreateService();
             var session = await service.CreateSessionAsync("user-1");
