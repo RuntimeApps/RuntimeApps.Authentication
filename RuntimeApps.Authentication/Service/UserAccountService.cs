@@ -140,6 +140,10 @@ namespace RuntimeApps.Authentication.Service {
                 await _contextAccessor.HttpContext.SignInAsync(claims);
 
                 if(_refreshTokenService != null) {
+                    var existingRefreshToken = _contextAccessor.HttpContext?.Request.Cookies[_refreshTokenOptions.CookieName];
+                    if(!string.IsNullOrEmpty(existingRefreshToken))
+                        await _refreshTokenService.RevokeAsync(existingRefreshToken);
+
                     var refreshSession = await _refreshTokenService.CreateSessionAsync(user.Id);
                     AppendRefreshCookie(refreshSession.RefreshToken, refreshSession.ExpiresAt);
                 }
