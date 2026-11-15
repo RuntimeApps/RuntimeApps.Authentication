@@ -20,6 +20,20 @@ namespace RuntimeApps.Authentication.Service {
         private readonly IRefreshTokenService<TKey> _refreshTokenService;
         private readonly RefreshTokenOptions _refreshTokenOptions;
 
+        // Preserve the original public constructor for existing compiled consumers.
+        public UserAccountService(IUserManager<TUser> userManager,
+                                  ISignInManager<TUser> signInManager,
+                                  IEnumerable<IExternalLoginProvider<TUser>> externalLoginProviders,
+                                  IAuthenticationHandlerProvider authenticationHandlerProvider,
+                                  IHttpContextAccessor contextAccessor,
+                                  IUserClaimsPrincipalFactory<TUser> userClaimsPrincipalFactory,
+                                  IAuthenticationSchemeProvider authenticationSchemeProvider,
+                                  IJwtProvider<TUser> jwtUtils = null)
+            : this(userManager, signInManager, externalLoginProviders, authenticationHandlerProvider,
+                   contextAccessor, userClaimsPrincipalFactory, authenticationSchemeProvider,
+                   jwtUtils, null, null) {
+        }
+
         public UserAccountService(IUserManager<TUser> userManager,
                                   ISignInManager<TUser> signInManager,
                                   IEnumerable<IExternalLoginProvider<TUser>> externalLoginProviders,
