@@ -8,6 +8,9 @@ namespace RuntimeApps.Authentication.Model {
         /// <summary>Revoke the affected session family when a previously rotated token is reused.</summary>
         public bool RevokeFamilyOnReuse { get; set; } = true;
 
+        /// <summary>Maximum refresh requests per minute per remote IP address.</summary>
+        public int RefreshRequestsPerMinute { get; set; } = 30;
+
         /// <summary>Name of the refresh-token cookie used by cookie authentication.</summary>
         public string CookieName { get; set; } = "__Host-runtimeapps-refresh";
 
