@@ -31,11 +31,17 @@ namespace RuntimeApps.Authentication.Extensions {
                 .Validate(options => !string.IsNullOrWhiteSpace(options.CookieName) &&
                     !string.IsNullOrWhiteSpace(options.CookiePath),
                     "Refresh-token cookie name and path are required.")
-                .Validate(options => !options.CookieName.StartsWith("__Host-", StringComparison.Ordinal) ||
-                    (options.CookieSecure && options.CookiePath == "/"),
+                .Validate(options => !string.IsNullOrWhiteSpace(options.CookieName) &&
+                    (!options.CookieName.StartsWith("__Host-", StringComparison.Ordinal) ||
+                     (options.CookieSecure && options.CookiePath == "/")),
                     "Cookies using the __Host- prefix require Secure and the root path.")
                 .Validate(options => options.CookieSameSite != Microsoft.AspNetCore.Http.SameSiteMode.None || options.CookieSecure,
                     "SameSite=None cookies must also be Secure.")
+                .Validate(options => options.AllowedOrigins != null && options.AllowedOrigins.All(origin =>
+                    Uri.TryCreate(origin, UriKind.Absolute, out var uri) &&
+                    (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps) &&
+                    uri.AbsolutePath == "/" && string.IsNullOrEmpty(uri.Query) && string.IsNullOrEmpty(uri.Fragment)),
+                    "Allowed origins must be absolute HTTP or HTTPS origins without a path, query, or fragment.")
                 .ValidateOnStart();
 
             builder.Services.AddRateLimiter(rateLimiterOptions => {
