@@ -27,7 +27,6 @@ namespace RuntimeApps.Authentication.Controller {
                 IRefreshTokenService<TKey> refreshTokenService,
                 IRefreshTokenRequestLimiter requestLimiter,
                 IServiceProvider services,
-                IUserClaimsPrincipalFactory<TUser> claimsFactory,
                 IAuthenticationSchemeProvider schemeProvider,
                 IAuthenticationHandlerProvider handlerProvider,
                 IOptions<RefreshTokenOptions> options) => {
@@ -59,8 +58,7 @@ namespace RuntimeApps.Authentication.Controller {
 
                 try {
                     if(isCookie) {
-                        var principal = await claimsFactory.CreateAsync(user);
-                        await context.SignInAsync(principal);
+                        await signInManager.SignInAsync(user, true);
                         AppendRefreshCookie(context, options.Value, session.RefreshToken, session.ExpiresAt);
                         return Results.NoContent();
                     }
