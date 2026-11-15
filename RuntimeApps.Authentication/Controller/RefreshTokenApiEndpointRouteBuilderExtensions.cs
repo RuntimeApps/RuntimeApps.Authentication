@@ -59,8 +59,10 @@ namespace RuntimeApps.Authentication.Controller {
                     }
 
                     var jwtProvider = services.GetService<IJwtProvider<TUser>>();
-                    if(jwtProvider == null)
+                    if(jwtProvider == null) {
+                        await refreshTokenService.RevokeAsync(session.RefreshToken, CancellationToken.None);
                         return Results.Problem("JWT authentication is not configured.", statusCode: StatusCodes.Status500InternalServerError);
+                    }
 
                     var accessToken = await jwtProvider.GenerateTokenAsync(user);
                     accessToken.RefreshToken = session.RefreshToken;
@@ -78,7 +80,7 @@ namespace RuntimeApps.Authentication.Controller {
                 IRefreshTokenService<TKey> refreshTokenService,
                 IOptions<RefreshTokenOptions> options) => {
                 RefreshTokenRequest request = null;
-                if(context.Request.ContentLength > 0)
+                if(context.Request.ContentLength is > 0)
                     request = await context.Request.ReadFromJsonAsync<RefreshTokenRequest>(context.RequestAborted);
 
                 var isCookie = await HasCookieSignInHandlerAsync(context,
