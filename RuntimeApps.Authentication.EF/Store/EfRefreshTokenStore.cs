@@ -13,6 +13,10 @@ namespace RuntimeApps.Authentication.EF.Store {
 
         public EfRefreshTokenStore(TDbContext dbContext) {
             _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
+            if(_dbContext.Model.FindEntityType(typeof(RefreshToken<TKey>)) == null)
+                throw new InvalidOperationException(
+                    $"The DbContext model does not include {typeof(RefreshToken<TKey>).Name}. " +
+                    $"Call modelBuilder.AddRefreshTokenEntity<{typeof(TKey).Name}>() in OnModelCreating.");
         }
 
         public async Task CreateAsync(RefreshToken<TKey> token, CancellationToken cancellationToken = default) {
