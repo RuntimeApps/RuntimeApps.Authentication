@@ -22,7 +22,7 @@ namespace RuntimeApps.Authentication.Service {
 
             var claims = await _userClaimsPrincipalFactory.CreateAsync(user);
 
-            DateTime expire = DateTime.Now.Add(_jwtOption.RefreshInterval);
+            DateTime expire = DateTime.UtcNow.Add(_jwtOption.RefreshInterval);
             var token = new JwtSecurityToken(_jwtOption.TokenValidationParameters.ValidIssuer, _jwtOption.TokenValidationParameters.ValidAudience,
                 claims.Claims,
                 expires: expire,
