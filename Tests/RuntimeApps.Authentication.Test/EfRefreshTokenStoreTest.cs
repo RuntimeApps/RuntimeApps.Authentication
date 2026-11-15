@@ -79,15 +79,16 @@ namespace RuntimeApps.Authentication.Test {
                 await store.CreateAsync(token, cancellationToken);
             }
 
-            var revokedCount = await store.RevokeAllAsync(10, now, cancellationToken);
-            await store.RevokeFamilyAsync(secondUserFamily, now.AddMinutes(1), cancellationToken);
+            await store.RevokeFamilyAsync(firstUserFamily, now.AddMinutes(1), cancellationToken);
+            var revokedCount = await store.RevokeAllAsync(10, now.AddMinutes(2), cancellationToken);
 
             var records = await dbContext.Set<RefreshToken<int>>()
                 .AsNoTracking()
                 .ToListAsync(cancellationToken);
 
-            Assert.Equal(2, revokedCount);
-            Assert.All(records.Where(token => token.UserId == 10), token => Assert.NotNull(token.RevokedAt));
+            Assert.Equal(1, revokedCount);
+            Assert.Equal(now.AddMinutes(1), records.Single(token => token.FamilyId == firstUserFamily).RevokedAt);
+            Assert.Equal(now.AddMinutes(2), records.Single(token => token.FamilyId == secondUserFamily).RevokedAt);
             Assert.Null(records.Single(token => token.UserId == 20).RevokedAt);
         }
 
