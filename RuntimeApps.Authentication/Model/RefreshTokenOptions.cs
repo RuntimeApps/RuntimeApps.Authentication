@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 
 namespace RuntimeApps.Authentication.Model {
     public sealed class RefreshTokenOptions {
+        public const string RateLimitPolicyName = "RuntimeApps.RefreshToken";
         /// <summary>Maximum lifetime of a refresh token. Defaults to 30 days.</summary>
         public TimeSpan TokenLifetime { get; set; } = TimeSpan.FromDays(30);
 
