@@ -9,6 +9,8 @@ namespace RuntimeApps.Authentication.EF.Model {
         public void Configure(EntityTypeBuilder<RefreshToken<TKey>> builder) {
             builder.ToTable("AuthenticationRefreshTokens");
             builder.HasKey(token => token.Id);
+            builder.Property(token => token.UserId).IsRequired();
+            builder.Property(token => token.FamilyId).IsRequired();
             // Store UTC DateTimeOffset values as binary ticks so expiry predicates are
             // supported consistently by relational providers such as SQLite.
             builder.Property(token => token.CreatedAt).HasConversion(new DateTimeOffsetToBinaryConverter());
