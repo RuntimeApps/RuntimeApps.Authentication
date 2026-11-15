@@ -23,6 +23,7 @@ namespace RuntimeApps.Authentication.Controller {
 
             routes.MapPost("refresh", async Task<IResult> (HttpContext context,
                 IUserManager<TUser> userManager,
+                ISignInManager<TUser> signInManager,
                 IRefreshTokenService<TKey> refreshTokenService,
                 IServiceProvider services,
                 IUserClaimsPrincipalFactory<TUser> claimsFactory,
@@ -45,7 +46,9 @@ namespace RuntimeApps.Authentication.Controller {
                     return Results.Unauthorized();
 
                 var user = await userManager.FindByIdAsync(Convert.ToString(session.UserId));
-                if(user == null) {
+                if(user == null ||
+                   await userManager.IsLockedOutAsync(user) ||
+                   !await signInManager.CanSignInAsync(user)) {
                     await refreshTokenService.RevokeAsync(session.RefreshToken, context.RequestAborted);
                     return Results.Unauthorized();
                 }
