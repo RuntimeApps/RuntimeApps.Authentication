@@ -140,11 +140,14 @@ namespace RuntimeApps.Authentication.Service {
                 await _contextAccessor.HttpContext.SignInAsync(claims);
 
                 if(_refreshTokenService != null) {
-                    var existingRefreshToken = _contextAccessor.HttpContext?.Request.Cookies[_refreshTokenOptions.CookieName];
+                    var httpContext = _contextAccessor.HttpContext;
+                    var cancellationToken = httpContext?.RequestAborted ?? CancellationToken.None;
+                    var existingRefreshToken = httpContext?.Request.Cookies[_refreshTokenOptions.CookieName];
                     if(!string.IsNullOrEmpty(existingRefreshToken))
-                        await _refreshTokenService.RevokeAsync(existingRefreshToken);
+                        await _refreshTokenService.RevokeAsync(existingRefreshToken, cancellationToken);
 
-                    var refreshSession = await _refreshTokenService.CreateSessionAsync(user.Id);
+                    var refreshSession = await _refreshTokenService.CreateSessionAsync(
+                        user.Id, cancellationToken: cancellationToken);
                     AppendRefreshCookie(refreshSession.RefreshToken, refreshSession.ExpiresAt);
                 }
                 return new Result<TUser, Token>(user, null);
@@ -152,7 +155,9 @@ namespace RuntimeApps.Authentication.Service {
 
             var token = await _jwtUtils.GenerateTokenAsync(user);
             if(_refreshTokenService != null) {
-                var refreshSession = await _refreshTokenService.CreateSessionAsync(user.Id);
+                var cancellationToken = _contextAccessor.HttpContext?.RequestAborted ?? CancellationToken.None;
+                var refreshSession = await _refreshTokenService.CreateSessionAsync(
+                    user.Id, cancellationToken: cancellationToken);
                 token.RefreshToken = refreshSession.RefreshToken;
                 token.RefreshTokenExpireDate = refreshSession.ExpiresAt;
                 token.SessionId = refreshSession.SessionId;
