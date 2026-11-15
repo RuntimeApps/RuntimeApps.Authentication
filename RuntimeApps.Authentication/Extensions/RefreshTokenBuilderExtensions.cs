@@ -38,7 +38,8 @@ namespace RuntimeApps.Authentication.Extensions {
                     "SameSite=None cookies must also be Secure.")
                 .ValidateOnStart();
 
-            builder.Services.AddRateLimiter(rateLimiterOptions =>
+            builder.Services.AddRateLimiter(rateLimiterOptions => {
+                rateLimiterOptions.RejectionStatusCode = Microsoft.AspNetCore.Http.StatusCodes.Status429TooManyRequests;
                 rateLimiterOptions.AddPolicy(RefreshTokenOptions.RateLimitPolicyName, context => {
                     var limit = context.RequestServices.GetRequiredService<Microsoft.Extensions.Options.IOptions<RefreshTokenOptions>>().Value.RefreshRequestsPerMinute;
                     var partitionKey = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -48,7 +49,8 @@ namespace RuntimeApps.Authentication.Extensions {
                         QueueLimit = 0,
                         AutoReplenishment = true
                     });
-                }));
+                });
+            });
 
             builder.Services.TryAddSingleton(TimeProvider.System);
             builder.Services.TryAddScoped<IRefreshTokenService<TKey>, RefreshTokenService<TKey>>();
