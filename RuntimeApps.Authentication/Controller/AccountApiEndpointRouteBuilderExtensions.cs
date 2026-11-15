@@ -35,6 +35,12 @@ namespace RuntimeApps.Authentication.Controller {
                 });
             }
 
+            // Refresh endpoints are exposed only when AddRefreshToken() was used during registration.
+            if(endpoints.ServiceProvider.GetService<IServiceProviderIsService>()
+                ?.IsService(typeof(IRefreshTokenService<TKey>)) == true) {
+                endpoints.MapRefreshTokenApi<TUser, TKey>();
+            }
+
             return endpoints;
         }
 
