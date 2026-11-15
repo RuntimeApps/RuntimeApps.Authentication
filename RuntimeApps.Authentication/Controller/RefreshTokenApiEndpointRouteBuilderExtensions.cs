@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Routing;
@@ -32,6 +33,9 @@ namespace RuntimeApps.Authentication.Controller {
                     request = await context.Request.ReadFromJsonAsync<RefreshTokenRequest>(context.RequestAborted);
 
                 var isCookie = await HasCookieSignInHandlerAsync(context, schemeProvider, handlerProvider);
+                if(isCookie && !IsAllowedOrigin(context, options.Value))
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+
                 var suppliedToken = isCookie
                     ? context.Request.Cookies[options.Value.CookieName]
                     : request?.RefreshToken;
@@ -72,8 +76,18 @@ namespace RuntimeApps.Authentication.Controller {
                 if(context.Request.ContentLength > 0)
                     request = await context.Request.ReadFromJsonAsync<RefreshTokenRequest>(context.RequestAborted);
 
-                var token = request?.RefreshToken ?? context.Request.Cookies[options.Value.CookieName];
+                var isCookie = await HasCookieSignInHandlerAsync(context,
+                    context.RequestServices.GetRequiredService<IAuthenticationSchemeProvider>(),
+                    context.RequestServices.GetRequiredService<IAuthenticationHandlerProvider>());
+                if(isCookie && !IsAllowedOrigin(context, options.Value))
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+                var token = isCookie
+                    ? context.Request.Cookies[options.Value.CookieName]
+                    : request?.RefreshToken;
                 await refreshTokenService.RevokeAsync(token, context.RequestAborted);
+                if(isCookie)
+                    await context.SignOutAsync();
                 context.Response.Cookies.Delete(options.Value.CookieName, new CookieOptions {
                     Path = options.Value.CookiePath,
                     Secure = options.Value.CookieSecure,
@@ -91,7 +105,15 @@ namespace RuntimeApps.Authentication.Controller {
                 if(user == null)
                     return Results.Unauthorized();
 
+                var isCookie = await HasCookieSignInHandlerAsync(context,
+                    context.RequestServices.GetRequiredService<IAuthenticationSchemeProvider>(),
+                    context.RequestServices.GetRequiredService<IAuthenticationHandlerProvider>());
+                if(isCookie && !IsAllowedOrigin(context, options.Value))
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+
                 await refreshTokenService.RevokeAllAsync(user.Id, context.RequestAborted);
+                if(isCookie)
+                    await context.SignOutAsync();
                 context.Response.Cookies.Delete(options.Value.CookieName, new CookieOptions {
                     Path = options.Value.CookiePath,
                     Secure = options.Value.CookieSecure,
@@ -114,6 +136,23 @@ namespace RuntimeApps.Authentication.Controller {
 
             var handler = await handlerProvider.GetHandlerAsync(context, scheme.Name);
             return handler is IAuthenticationSignInHandler;
+        }
+
+        private static bool IsAllowedOrigin(HttpContext context, RefreshTokenOptions options) {
+            var origin = context.Request.Headers["Origin"].ToString();
+            if(!Uri.TryCreate(origin, UriKind.Absolute, out var originUri) ||
+               (originUri.Scheme != Uri.UriSchemeHttp && originUri.Scheme != Uri.UriSchemeHttps) ||
+               originUri.AbsolutePath != "/" || !string.IsNullOrEmpty(originUri.Query) ||
+               !string.IsNullOrEmpty(originUri.Fragment))
+                return false;
+
+            var normalizedOrigin = originUri.GetLeftPart(UriPartial.Authority).TrimEnd('/');
+            var requestOrigin = $"{context.Request.Scheme}://{context.Request.Host}".TrimEnd('/');
+            if(string.Equals(normalizedOrigin, requestOrigin, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            return options.AllowedOrigins.Any(allowed =>
+                string.Equals(allowed.TrimEnd('/'), normalizedOrigin, StringComparison.OrdinalIgnoreCase));
         }
 
         private static void AppendRefreshCookie(
