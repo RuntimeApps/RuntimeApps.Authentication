@@ -193,7 +193,7 @@ JWT clients send `{ "refreshToken": "..." }` in the request body to `/refresh` a
 
 ### Sessions and security behavior
 
-Each successful login creates a separate session (token family). Refresh rotates the token within that family. Reuse of a consumed token revokes only that family, not the user's other sessions. Logout revokes the current family; logout-all revokes all families belonging to the authenticated user. The built-in password-change and add-password endpoints also revoke all refresh-token sessions after a successful password update.
+Each successful login creates a separate session (token family). Refresh rotates the token within that family. Reuse of a consumed token revokes only that family, not the user's other sessions. Logout revokes the current family; logout-all revokes all families belonging to the authenticated user. The built-in password-change and add-password endpoints also revoke all refresh-token sessions after a successful password update. Applications implementing password-reset or credential-change flows outside these endpoints should explicitly call `IRefreshTokenService<TKey>.RevokeAllAsync(userId)` after a successful reset.
 
 Refresh tokens are bearer credentials. Clients must store them securely and must not log them. Browser applications should prefer HttpOnly cookies over localStorage. Serialize refresh requests: with strict reuse detection, retrying an old token after a successful rotation (for example, after losing the response) is treated as replay and revokes that session.
 
