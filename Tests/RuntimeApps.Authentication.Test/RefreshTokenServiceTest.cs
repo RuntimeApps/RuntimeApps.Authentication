@@ -16,9 +16,10 @@ namespace RuntimeApps.Authentication.Test {
         [Fact]
         public async Task CreateSession_CreatesIndependentSessionForEachLogin() {
             var service = CreateService();
+            var cancellationToken = TestContext.Current.CancellationToken;
 
-            var first = await service.CreateSessionAsync("user-1");
-            var second = await service.CreateSessionAsync("user-1");
+            var first = await service.CreateSessionAsync("user-1", cancellationToken: cancellationToken);
+            var second = await service.CreateSessionAsync("user-1", cancellationToken: cancellationToken);
 
             Assert.NotEqual(first.SessionId, second.SessionId);
             Assert.NotEqual(first.RefreshToken, second.RefreshToken);
@@ -29,9 +30,10 @@ namespace RuntimeApps.Authentication.Test {
         [Fact]
         public async Task RotateAsync_CreatesReplacementInSameFamily() {
             var service = CreateService();
-            var first = await service.CreateSessionAsync("user-1");
+            var cancellationToken = TestContext.Current.CancellationToken;
+            var first = await service.CreateSessionAsync("user-1", cancellationToken: cancellationToken);
 
-            var second = await service.RotateAsync(first.RefreshToken);
+            var second = await service.RotateAsync(first.RefreshToken, cancellationToken);
 
             Assert.NotNull(second);
             Assert.Equal(first.SessionId, second.SessionId);
@@ -43,12 +45,13 @@ namespace RuntimeApps.Authentication.Test {
         [Fact]
         public async Task RotateAsync_ReusedTokenRevokesOnlyItsFamily() {
             var service = CreateService();
-            var firstSession = await service.CreateSessionAsync("user-1");
-            var otherSession = await service.CreateSessionAsync("user-1");
-            var replacement = await service.RotateAsync(firstSession.RefreshToken);
+            var cancellationToken = TestContext.Current.CancellationToken;
+            var firstSession = await service.CreateSessionAsync("user-1", cancellationToken: cancellationToken);
+            var otherSession = await service.CreateSessionAsync("user-1", cancellationToken: cancellationToken);
+            var replacement = await service.RotateAsync(firstSession.RefreshToken, cancellationToken);
 
-            var replay = await service.RotateAsync(firstSession.RefreshToken);
-            var otherStillWorks = await service.RotateAsync(otherSession.RefreshToken);
+            var replay = await service.RotateAsync(firstSession.RefreshToken, cancellationToken);
+            var otherStillWorks = await service.RotateAsync(otherSession.RefreshToken, cancellationToken);
 
             Assert.Null(replay);
             Assert.NotNull(otherStillWorks);
@@ -61,10 +64,11 @@ namespace RuntimeApps.Authentication.Test {
         [Fact]
         public async Task RevokeAllAsync_RevokesOnlyTheSpecifiedUsersSessions() {
             var service = CreateService();
-            var userOneSession = await service.CreateSessionAsync("user-1");
-            var userTwoSession = await service.CreateSessionAsync("user-2");
+            var cancellationToken = TestContext.Current.CancellationToken;
+            var userOneSession = await service.CreateSessionAsync("user-1", cancellationToken: cancellationToken);
+            var userTwoSession = await service.CreateSessionAsync("user-2", cancellationToken: cancellationToken);
 
-            var count = await service.RevokeAllAsync("user-1");
+            var count = await service.RevokeAllAsync("user-1", cancellationToken);
 
             Assert.Equal(1, count);
             Assert.All(_store.Tokens.Where(token => token.UserId == "user-1"),
@@ -77,13 +81,14 @@ namespace RuntimeApps.Authentication.Test {
         [Fact]
         public async Task RotateAsync_ConcurrentReuseDoesNotLeaveFamilyActive() {
             var service = CreateService();
-            var session = await service.CreateSessionAsync("user-1");
+            var cancellationToken = TestContext.Current.CancellationToken;
+            var session = await service.CreateSessionAsync("user-1", cancellationToken: cancellationToken);
 
             var results = await Task.WhenAll(
-                service.RotateAsync(session.RefreshToken),
-                service.RotateAsync(session.RefreshToken));
+                service.RotateAsync(session.RefreshToken, cancellationToken),
+                service.RotateAsync(session.RefreshToken, cancellationToken));
 
-            Assert.Single(results.Where(result => result != null));
+            Assert.Single(results, result => result != null);
             Assert.All(_store.Tokens.Where(token => token.FamilyId == session.SessionId),
                 token => Assert.NotNull(token.RevokedAt));
         }
@@ -91,10 +96,11 @@ namespace RuntimeApps.Authentication.Test {
         [Fact]
         public async Task RotateAsync_RejectsExpiredToken() {
             var service = CreateService();
-            var session = await service.CreateSessionAsync("user-1");
+            var cancellationToken = TestContext.Current.CancellationToken;
+            var session = await service.CreateSessionAsync("user-1", cancellationToken: cancellationToken);
             _time.Advance(TimeSpan.FromDays(31));
 
-            Assert.Null(await service.RotateAsync(session.RefreshToken));
+            Assert.Null(await service.RotateAsync(session.RefreshToken, cancellationToken));
         }
 
         private sealed class MutableTimeProvider : TimeProvider {
