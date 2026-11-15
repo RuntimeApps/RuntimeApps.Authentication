@@ -29,11 +29,10 @@ namespace RuntimeApps.Authentication.Controller {
                 IAuthenticationSchemeProvider schemeProvider,
                 IAuthenticationHandlerProvider handlerProvider,
                 IOptions<RefreshTokenOptions> options) => {
-                RefreshTokenRequest request = null;
-                if(context.Request.ContentLength is > 0)
-                    request = await context.Request.ReadFromJsonAsync<RefreshTokenRequest>(context.RequestAborted);
-
                 var isCookie = await HasCookieSignInHandlerAsync(context, schemeProvider, handlerProvider);
+                RefreshTokenRequest request = null;
+                if(!isCookie && context.Request.HasJsonContentType())
+                    request = await context.Request.ReadFromJsonAsync<RefreshTokenRequest>(context.RequestAborted);
                 if(isCookie && !IsAllowedOrigin(context, options.Value))
                     return Results.StatusCode(StatusCodes.Status403Forbidden);
 
@@ -80,13 +79,12 @@ namespace RuntimeApps.Authentication.Controller {
             routes.MapPost("logout", async Task<IResult> (HttpContext context,
                 IRefreshTokenService<TKey> refreshTokenService,
                 IOptions<RefreshTokenOptions> options) => {
-                RefreshTokenRequest request = null;
-                if(context.Request.ContentLength is > 0)
-                    request = await context.Request.ReadFromJsonAsync<RefreshTokenRequest>(context.RequestAborted);
-
                 var isCookie = await HasCookieSignInHandlerAsync(context,
                     context.RequestServices.GetRequiredService<IAuthenticationSchemeProvider>(),
                     context.RequestServices.GetRequiredService<IAuthenticationHandlerProvider>());
+                RefreshTokenRequest request = null;
+                if(!isCookie && context.Request.HasJsonContentType())
+                    request = await context.Request.ReadFromJsonAsync<RefreshTokenRequest>(context.RequestAborted);
                 if(isCookie && !IsAllowedOrigin(context, options.Value))
                     return Results.StatusCode(StatusCodes.Status403Forbidden);
 
