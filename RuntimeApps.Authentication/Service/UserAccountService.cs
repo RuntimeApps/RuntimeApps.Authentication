@@ -120,20 +120,21 @@ namespace RuntimeApps.Authentication.Service {
 
         protected virtual async Task<Result<TUser, Token>> GenerateTokenAsync(TUser user) {
             bool hasHandler = await HasHandlerAsync();
-            var refreshSession = _refreshTokenService == null
-                ? null
-                : await _refreshTokenService.CreateSessionAsync(user.Id);
 
             if(hasHandler) {
                 var claims = await _userClaimsPrincipalFactory.CreateAsync(user);
                 await _contextAccessor.HttpContext.SignInAsync(claims);
-                if(refreshSession != null)
+
+                if(_refreshTokenService != null) {
+                    var refreshSession = await _refreshTokenService.CreateSessionAsync(user.Id);
                     AppendRefreshCookie(refreshSession.RefreshToken, refreshSession.ExpiresAt);
+                }
                 return new Result<TUser, Token>(user, null);
             }
 
             var token = await _jwtUtils.GenerateTokenAsync(user);
-            if(refreshSession != null) {
+            if(_refreshTokenService != null) {
+                var refreshSession = await _refreshTokenService.CreateSessionAsync(user.Id);
                 token.RefreshToken = refreshSession.RefreshToken;
                 token.RefreshTokenExpireDate = refreshSession.ExpiresAt;
                 token.SessionId = refreshSession.SessionId;
