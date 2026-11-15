@@ -79,10 +79,14 @@ namespace RuntimeApps.Authentication.Service {
                 current.Id, tokenHash, replacement, now, cancellationToken);
 
             if(!rotated) {
-                // Another request may have consumed this token after our read. Under strict
-                // reuse detection, invalidate this session family rather than accepting a race.
-                if(_options.RevokeFamilyOnReuse)
-                    await _store.RevokeFamilyAsync(current.FamilyId, now, cancellationToken);
+                // Distinguish a concurrent replay from an expiry race. Only a token that another
+                // request actually consumed and replaced should trigger family-wide revocation.
+                var latest = await _store.FindByHashAsync(tokenHash, cancellationToken);
+                if(latest?.RevokedAt.HasValue == true &&
+                   latest.ReplacedByTokenId.HasValue &&
+                   _options.RevokeFamilyOnReuse) {
+                    await _store.RevokeFamilyAsync(latest.FamilyId, now, cancellationToken);
+                }
                 return null;
             }
 
