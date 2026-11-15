@@ -40,7 +40,7 @@ namespace RuntimeApps.Authentication.Sample.CookieAuthentication.Migrations
                         .HasColumnType("nvarchar(64)");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasConversion<long>()
+                        .HasConversion(new DateTimeOffsetToBinaryConverter())
                         .HasColumnType("bigint");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
@@ -48,7 +48,7 @@ namespace RuntimeApps.Authentication.Sample.CookieAuthentication.Migrations
                         .HasColumnType("bigint");
 
                     b.Property<DateTimeOffset?>("RevokedAt")
-                        .HasConversion<long?>()
+                        .HasConversion(new DateTimeOffsetToBinaryConverter())
                         .HasColumnType("bigint");
 
                     b.Property<Guid?>("ReplacedByTokenId")
