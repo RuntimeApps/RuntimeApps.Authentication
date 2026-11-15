@@ -19,7 +19,7 @@ namespace RuntimeApps.Authentication.Controller {
             where TKey : IEquatable<TKey> {
             var routes = endpoints.MapGroup("");
 
-            routes.MapPost("refresh", async (HttpContext context,
+            routes.MapPost("refresh", async Task<IResult> (HttpContext context,
                 IUserManager<TUser> userManager,
                 IRefreshTokenService<TKey> refreshTokenService,
                 IServiceProvider services,
@@ -65,14 +65,14 @@ namespace RuntimeApps.Authentication.Controller {
                 return Results.Ok(accessToken);
             });
 
-            routes.MapPost("logout", async (HttpContext context,
+            routes.MapPost("logout", async Task<IResult> (HttpContext context,
                 IRefreshTokenService<TKey> refreshTokenService,
                 IOptions<RefreshTokenOptions> options) => {
                 RefreshTokenRequest request = null;
                 if(context.Request.ContentLength > 0)
                     request = await context.Request.ReadFromJsonAsync<RefreshTokenRequest>(context.RequestAborted);
 
-                var token = context.Request.Cookies[options.Value.CookieName] ?? request?.RefreshToken;
+                var token = request?.RefreshToken ?? context.Request.Cookies[options.Value.CookieName];
                 await refreshTokenService.RevokeAsync(token, context.RequestAborted);
                 context.Response.Cookies.Delete(options.Value.CookieName, new CookieOptions {
                     Path = options.Value.CookiePath,
@@ -83,7 +83,7 @@ namespace RuntimeApps.Authentication.Controller {
                 return Results.NoContent();
             });
 
-            routes.MapPost("logout/all", async (HttpContext context,
+            routes.MapPost("logout/all", async Task<IResult> (HttpContext context,
                 IUserManager<TUser> userManager,
                 IRefreshTokenService<TKey> refreshTokenService,
                 IOptions<RefreshTokenOptions> options) => {
