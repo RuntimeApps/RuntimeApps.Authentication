@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using RuntimeApps.Authentication.Interface;
@@ -74,7 +75,7 @@ namespace RuntimeApps.Authentication.Controller {
                     await refreshTokenService.RevokeAsync(session.RefreshToken, CancellationToken.None);
                     throw;
                 }
-            });
+            }).RequireRateLimiting(RefreshTokenOptions.RateLimitPolicyName);
 
             routes.MapPost("logout", async Task<IResult> (HttpContext context,
                 IRefreshTokenService<TKey> refreshTokenService,
