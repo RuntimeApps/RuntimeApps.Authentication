@@ -53,6 +53,53 @@ namespace RuntimeApps.Authentication.Test {
             Assert.Equal(original.FamilyId, active.FamilyId);
         }
 
+        [Fact]
+        public async Task RevokeAllAsync_RevokesOnlyTheSpecifiedUsersSessions() {
+            var cancellationToken = TestContext.Current.CancellationToken;
+            await using var connection = new SqliteConnection("Data Source=:memory:");
+            await connection.OpenAsync(cancellationToken);
+
+            var options = new DbContextOptionsBuilder<TestDbContext>()
+                .UseSqlite(connection)
+                .Options;
+            await using var dbContext = new TestDbContext(options);
+            await dbContext.Database.EnsureCreatedAsync(cancellationToken);
+
+            var store = new EfRefreshTokenStore<TestDbContext, int>(dbContext);
+            var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+            var firstUserFamily = Guid.NewGuid();
+            var secondUserFamily = Guid.NewGuid();
+            var otherUserFamily = Guid.NewGuid();
+
+            foreach(var token in new[] {
+                CreateToken(10, firstUserFamily, "A", now),
+                CreateToken(10, secondUserFamily, "B", now),
+                CreateToken(20, otherUserFamily, "C", now)
+            }) {
+                await store.CreateAsync(token, cancellationToken);
+            }
+
+            var revokedCount = await store.RevokeAllAsync(10, now, cancellationToken);
+            await store.RevokeFamilyAsync(secondUserFamily, now.AddMinutes(1), cancellationToken);
+
+            var records = await dbContext.Set<RefreshToken<int>>()
+                .AsNoTracking()
+                .ToListAsync(cancellationToken);
+
+            Assert.Equal(2, revokedCount);
+            Assert.All(records.Where(token => token.UserId == 10), token => Assert.NotNull(token.RevokedAt));
+            Assert.Null(records.Single(token => token.UserId == 20).RevokedAt);
+        }
+
+        private static RefreshToken<int> CreateToken(int userId, Guid familyId, string hashPrefix, DateTimeOffset now) => new() {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            FamilyId = familyId,
+            TokenHash = hashPrefix.PadRight(64, '0'),
+            CreatedAt = now,
+            ExpiresAt = now.AddDays(30)
+        };
+
         private sealed class TestDbContext : IdentityDbContext<IdentityUser<int>, IdentityRole<int>, int> {
             public TestDbContext(DbContextOptions<TestDbContext> options) : base(options) { }
 
