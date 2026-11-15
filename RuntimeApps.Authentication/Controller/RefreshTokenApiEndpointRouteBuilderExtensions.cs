@@ -29,7 +29,7 @@ namespace RuntimeApps.Authentication.Controller {
                 IAuthenticationHandlerProvider handlerProvider,
                 IOptions<RefreshTokenOptions> options) => {
                 RefreshTokenRequest request = null;
-                if(context.Request.ContentLength > 0)
+                if(context.Request.ContentLength is > 0)
                     request = await context.Request.ReadFromJsonAsync<RefreshTokenRequest>(context.RequestAborted);
 
                 var isCookie = await HasCookieSignInHandlerAsync(context, schemeProvider, handlerProvider);
@@ -152,7 +152,7 @@ namespace RuntimeApps.Authentication.Controller {
                 return true;
 
             return options.AllowedOrigins.Any(allowed =>
-                string.Equals(allowed.TrimEnd('/'), normalizedOrigin, StringComparison.OrdinalIgnoreCase));
+                string.Equals(allowed?.TrimEnd('/'), normalizedOrigin, StringComparison.OrdinalIgnoreCase));
         }
 
         private static void AppendRefreshCookie(
