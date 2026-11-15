@@ -200,7 +200,7 @@ When `AddRefreshToken()` is registered, `MapLoginApi` also maps:
 | `POST /logout` | Revokes the session associated with the supplied refresh token |
 | `POST /logout/all` | Revokes all sessions for the authenticated user |
 
-JWT clients send `{ "refreshToken": "..." }` in the request body to `/refresh` and `/logout`. Cookie authentication uses the configured HttpOnly refresh-token cookie. Cookie mode defaults to a Secure, HttpOnly, SameSite=Strict cookie named `__Host-runtimeapps-refresh`; applications may configure its name, path, and SameSite mode through `RefreshTokenOptions`. If SameSite=None is selected, Secure is required. Applications should review their deployment's CSRF requirements and cross-origin behavior before changing cookie defaults.
+JWT clients send `{ "refreshToken": "..." }` in the request body to `/refresh` and `/logout`. Cookie authentication uses the configured HttpOnly refresh-token cookie. Cookie mode defaults to a Secure, HttpOnly, SameSite=Strict cookie named `__Host-runtimeapps-refresh`; applications may configure its name, path, SameSite mode, and exact cross-origin allowlist through `RefreshTokenOptions.AllowedOrigins`. If SameSite=None is selected, Secure is required. For a cross-origin browser client, configure the expected origin explicitly and review CORS credentials and CSRF requirements before changing cookie defaults.
 
 ### Sessions and security behavior
 
