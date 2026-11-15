@@ -1,3 +1,5 @@
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
@@ -24,6 +26,8 @@ namespace RuntimeApps.Authentication.Extensions {
                 .Configure(configure ?? (_ => { }))
                 .Validate(options => options.TokenLifetime > TimeSpan.Zero,
                     "Refresh-token lifetime must be greater than zero.")
+                .Validate(options => options.RefreshRequestsPerMinute > 0,
+                    "Refresh request rate limit must be greater than zero.")
                 .Validate(options => !string.IsNullOrWhiteSpace(options.CookieName) &&
                     !string.IsNullOrWhiteSpace(options.CookiePath),
                     "Refresh-token cookie name and path are required.")
@@ -33,6 +37,18 @@ namespace RuntimeApps.Authentication.Extensions {
                 .Validate(options => options.CookieSameSite != Microsoft.AspNetCore.Http.SameSiteMode.None || options.CookieSecure,
                     "SameSite=None cookies must also be Secure.")
                 .ValidateOnStart();
+
+            builder.Services.AddRateLimiter(rateLimiterOptions =>
+                rateLimiterOptions.AddPolicy(RefreshTokenOptions.RateLimitPolicyName, context => {
+                    var limit = context.RequestServices.GetRequiredService<Microsoft.Extensions.Options.IOptions<RefreshTokenOptions>>().Value.RefreshRequestsPerMinute;
+                    var partitionKey = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+                    return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ => new FixedWindowRateLimiterOptions {
+                        PermitLimit = limit,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0,
+                        AutoReplenishment = true
+                    });
+                }));
 
             builder.Services.TryAddSingleton(TimeProvider.System);
             builder.Services.TryAddScoped<IRefreshTokenService<TKey>, RefreshTokenService<TKey>>();
