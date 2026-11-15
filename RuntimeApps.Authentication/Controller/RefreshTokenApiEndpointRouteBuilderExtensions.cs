@@ -50,23 +50,28 @@ namespace RuntimeApps.Authentication.Controller {
                     return Results.Unauthorized();
                 }
 
-                if(isCookie) {
-                    var principal = await claimsFactory.CreateAsync(user);
-                    await context.SignInAsync(principal);
-                    AppendRefreshCookie(context, options.Value, session.RefreshToken, session.ExpiresAt);
-                    return Results.NoContent();
-                }
+                try {
+                    if(isCookie) {
+                        var principal = await claimsFactory.CreateAsync(user);
+                        await context.SignInAsync(principal);
+                        AppendRefreshCookie(context, options.Value, session.RefreshToken, session.ExpiresAt);
+                        return Results.NoContent();
+                    }
 
-                var jwtProvider = services.GetService<IJwtProvider<TUser>>();
-                if(jwtProvider == null) {
-                    await refreshTokenService.RevokeAsync(session.RefreshToken, context.RequestAborted);
-                    return Results.Problem("JWT authentication is not configured.", statusCode: StatusCodes.Status500InternalServerError);
+                    var jwtProvider = services.GetService<IJwtProvider<TUser>>();
+                    if(jwtProvider == null)
+                        return Results.Problem("JWT authentication is not configured.", statusCode: StatusCodes.Status500InternalServerError);
+
+                    var accessToken = await jwtProvider.GenerateTokenAsync(user);
+                    accessToken.RefreshToken = session.RefreshToken;
+                    accessToken.RefreshTokenExpireDate = session.ExpiresAt;
+                    accessToken.SessionId = session.SessionId;
+                    return Results.Ok(accessToken);
                 }
-                var accessToken = await jwtProvider.GenerateTokenAsync(user);
-                accessToken.RefreshToken = session.RefreshToken;
-                accessToken.RefreshTokenExpireDate = session.ExpiresAt;
-                accessToken.SessionId = session.SessionId;
-                return Results.Ok(accessToken);
+                catch {
+                    await refreshTokenService.RevokeAsync(session.RefreshToken, CancellationToken.None);
+                    throw;
+                }
             });
 
             routes.MapPost("logout", async Task<IResult> (HttpContext context,
@@ -151,8 +156,8 @@ namespace RuntimeApps.Authentication.Controller {
             if(string.Equals(normalizedOrigin, requestOrigin, StringComparison.OrdinalIgnoreCase))
                 return true;
 
-            return options.AllowedOrigins.Any(allowed =>
-                string.Equals(allowed?.TrimEnd('/'), normalizedOrigin, StringComparison.OrdinalIgnoreCase));
+            return options.AllowedOrigins?.Any(allowed =>
+                string.Equals(allowed?.TrimEnd('/'), normalizedOrigin, StringComparison.OrdinalIgnoreCase)) == true;
         }
 
         private static void AppendRefreshCookie(
