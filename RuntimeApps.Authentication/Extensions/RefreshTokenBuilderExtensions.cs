@@ -38,7 +38,8 @@ namespace RuntimeApps.Authentication.Extensions {
                 .Validate(options => options.AllowedOrigins != null && options.AllowedOrigins.All(origin =>
                     Uri.TryCreate(origin, UriKind.Absolute, out var uri) &&
                     (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps) &&
-                    uri.AbsolutePath == "/" && string.IsNullOrEmpty(uri.Query) && string.IsNullOrEmpty(uri.Fragment)),
+                    string.IsNullOrEmpty(uri.UserInfo) && uri.AbsolutePath == "/" &&
+                    string.IsNullOrEmpty(uri.Query) && string.IsNullOrEmpty(uri.Fragment)),
                     "Allowed origins must be absolute HTTP or HTTPS origins without a path, query, or fragment.")
                 .ValidateOnStart();
 
