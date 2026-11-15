@@ -181,6 +181,17 @@ Create and apply an EF Core migration after adding the entity. The EF store requ
 
 ### Endpoints
 
+When `AddRefreshToken()` is registered, `MapLoginApi` also maps. Add the rate-limiting middleware to the application pipeline (after routing and before endpoint execution):
+
+```cs
+app.UseRouting();
+app.UseRateLimiter();
+app.UseAuthentication();
+app.UseAuthorization();
+```
+
+The refresh endpoint uses the named `RuntimeApps.RefreshToken` fixed-window policy, defaulting to 30 requests per minute per remote IP. Configure `RefreshRequestsPerMinute` to change the limit. When running behind a reverse proxy, configure trusted forwarded headers so the partition key reflects the actual client address.
+
 When `AddRefreshToken()` is registered, `MapLoginApi` also maps:
 
 | Endpoint | Behavior |
