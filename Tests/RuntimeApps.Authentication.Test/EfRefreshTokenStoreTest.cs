@@ -10,14 +10,15 @@ namespace RuntimeApps.Authentication.Test {
     public class EfRefreshTokenStoreTest {
         [Fact]
         public async Task TryRotateAsync_ConsumesOldTokenAndPersistsReplacementAtomically() {
+            var cancellationToken = TestContext.Current.CancellationToken;
             await using var connection = new SqliteConnection("Data Source=:memory:");
-            await connection.OpenAsync();
+            await connection.OpenAsync(cancellationToken);
 
             var options = new DbContextOptionsBuilder<TestDbContext>()
                 .UseSqlite(connection)
                 .Options;
             await using var dbContext = new TestDbContext(options);
-            await dbContext.Database.EnsureCreatedAsync();
+            await dbContext.Database.EnsureCreatedAsync(cancellationToken);
 
             var store = new EfRefreshTokenStore<TestDbContext, int>(dbContext);
             var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
@@ -38,12 +39,12 @@ namespace RuntimeApps.Authentication.Test {
                 ExpiresAt = now.AddDays(30)
             };
 
-            await store.CreateAsync(original);
-            var rotated = await store.TryRotateAsync(original.Id, original.TokenHash, replacement, now);
+            await store.CreateAsync(original, cancellationToken);
+            var rotated = await store.TryRotateAsync(original.Id, original.TokenHash, replacement, now, cancellationToken);
 
             Assert.True(rotated);
-            var consumed = await store.FindByHashAsync(original.TokenHash);
-            var active = await store.FindByHashAsync(replacement.TokenHash);
+            var consumed = await store.FindByHashAsync(original.TokenHash, cancellationToken);
+            var active = await store.FindByHashAsync(replacement.TokenHash, cancellationToken);
             Assert.NotNull(consumed);
             Assert.Equal(replacement.Id, consumed.ReplacedByTokenId);
             Assert.Equal(now, consumed.RevokedAt);
