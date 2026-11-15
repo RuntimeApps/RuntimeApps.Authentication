@@ -4,11 +4,11 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Routing;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using RuntimeApps.Authentication.Interface;
 using RuntimeApps.Authentication.Model;
+using RuntimeApps.Authentication.Service;
 
 namespace RuntimeApps.Authentication.Controller {
     public static class RefreshTokenApiEndpointRouteBuilderExtensions {
@@ -25,11 +25,15 @@ namespace RuntimeApps.Authentication.Controller {
                 IUserManager<TUser> userManager,
                 ISignInManager<TUser> signInManager,
                 IRefreshTokenService<TKey> refreshTokenService,
+                IRefreshTokenRequestLimiter requestLimiter,
                 IServiceProvider services,
                 IUserClaimsPrincipalFactory<TUser> claimsFactory,
                 IAuthenticationSchemeProvider schemeProvider,
                 IAuthenticationHandlerProvider handlerProvider,
                 IOptions<RefreshTokenOptions> options) => {
+                if(!await requestLimiter.IsAllowedAsync(context, context.RequestAborted))
+                    return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+
                 var isCookie = await HasCookieSignInHandlerAsync(context, schemeProvider, handlerProvider);
                 RefreshTokenRequest request = null;
                 if(!isCookie && context.Request.HasJsonContentType())
@@ -77,7 +81,7 @@ namespace RuntimeApps.Authentication.Controller {
                     await refreshTokenService.RevokeAsync(session.RefreshToken, CancellationToken.None);
                     throw;
                 }
-            }).RequireRateLimiting(RefreshTokenOptions.RateLimitPolicyName);
+            });
 
             routes.MapPost("logout", async Task<IResult> (HttpContext context,
                 IRefreshTokenService<TKey> refreshTokenService,
