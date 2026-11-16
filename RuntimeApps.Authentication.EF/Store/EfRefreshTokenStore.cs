@@ -45,7 +45,7 @@ namespace RuntimeApps.Authentication.EF.Store {
                 .SingleOrDefaultAsync(token => token.TokenHash == tokenHash, cancellationToken);
 
         public async Task<bool> TryRotateAsync(
-            Guid tokenId,
+            TKey tokenId,
             string expectedTokenHash,
             RefreshToken<TKey> replacement,
             DateTimeOffset now,
