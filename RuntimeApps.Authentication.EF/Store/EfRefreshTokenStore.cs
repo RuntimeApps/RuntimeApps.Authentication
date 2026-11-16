@@ -20,7 +20,7 @@ namespace RuntimeApps.Authentication.EF.Store {
         }
 
         private static void PrepareGeneratedId(RefreshToken<TKey> token) {
-            if(!EqualityComparer<TKey>.Default.Equals(token.Id, default))
+            if(!EqualityComparer<TKey>.Default.Equals(token.Id, default!))
                 return;
 
             object generatedId = typeof(TKey) == typeof(Guid)
