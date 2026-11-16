@@ -32,7 +32,7 @@ namespace RuntimeApps.Authentication.Service {
             var record = new RefreshToken<TKey> {
                 Id = default!,
                 UserId = userId,
-                FamilyId = default!,
+                FamilyId = Guid.NewGuid(),
                 TokenHash = HashToken(rawToken),
                 CreatedAt = now,
                 ExpiresAt = now.Add(_options.TokenLifetime),
@@ -66,7 +66,7 @@ namespace RuntimeApps.Authentication.Service {
 
             var rawReplacement = GenerateToken();
             var replacement = new RefreshToken<TKey> {
-                Id = Guid.NewGuid(),
+                Id = default!,
                 UserId = current.UserId,
                 FamilyId = current.FamilyId,
                 TokenHash = HashToken(rawReplacement),
