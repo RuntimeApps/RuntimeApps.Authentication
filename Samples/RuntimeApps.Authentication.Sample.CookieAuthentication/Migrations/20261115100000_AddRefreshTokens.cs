@@ -12,14 +12,16 @@ namespace RuntimeApps.Authentication.Sample.CookieAuthentication.Migrations {
             migrationBuilder.CreateTable(
                 name: "AuthenticationRefreshTokens",
                 columns: table => new {
-                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
                     UserId = table.Column<int>(type: "int", nullable: false),
                     FamilyId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     TokenHash = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
                     CreatedAt = table.Column<long>(type: "bigint", nullable: false),
                     ExpiresAt = table.Column<long>(type: "bigint", nullable: false),
                     RevokedAt = table.Column<long>(type: "bigint", nullable: true),
-                    ReplacedByTokenId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    ReplacedByTokenId = table.Column<int>(type: "int", nullable: false, defaultValue: 0),
+                    HasReplacement = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
                     SessionName = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true)
                 },
                 constraints: table => {
