@@ -131,7 +131,7 @@ namespace RuntimeApps.Authentication.Test {
                 lock(_sync) return Task.FromResult(_tokens.Where(token => token.TokenHash == tokenHash).Select(Clone).SingleOrDefault());
             }
 
-            public Task<bool> TryRotateAsync(Guid tokenId, string expectedTokenHash, RefreshToken<T> replacement,
+            public Task<bool> TryRotateAsync(T tokenId, string expectedTokenHash, RefreshToken<T> replacement,
                 DateTimeOffset now, CancellationToken cancellationToken = default) {
                 lock(_sync) {
                     var current = _tokens.SingleOrDefault(token => token.Id == tokenId &&
@@ -139,6 +139,8 @@ namespace RuntimeApps.Authentication.Test {
                     if(current == null)
                         return Task.FromResult(false);
                     current.RevokedAt = now;
+                    if(EqualityComparer<T>.Default.Equals(replacement.Id, default!))
+                        replacement.Id = (T)Convert.ChangeType(Guid.NewGuid().ToString("N"), typeof(T));
                     current.ReplacedByTokenId = replacement.Id;
                     current.HasReplacement = true;
                     _tokens.Add(Clone(replacement));
