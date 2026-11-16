@@ -25,7 +25,7 @@ namespace RuntimeApps.Authentication.Test {
             var original = new RefreshToken<int> {
                 Id = default,
                 UserId = 10,
-                FamilyId = Guid.NewGuid(),
+                FamilyId = default,
                 TokenHash = new string('A', 64),
                 CreatedAt = now,
                 ExpiresAt = now.AddDays(30)
