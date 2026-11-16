@@ -39,7 +39,7 @@ namespace RuntimeApps.Authentication.Test {
             Assert.Equal(first.SessionId, second.SessionId);
             Assert.NotEqual(first.RefreshToken, second.RefreshToken);
             Assert.Equal(2, _store.Tokens.Count);
-            Assert.Contains(_store.Tokens, token => token.ReplacedByTokenId != null);
+            Assert.Contains(_store.Tokens, token => token.HasReplacement);
         }
 
         [Fact]
@@ -119,7 +119,11 @@ namespace RuntimeApps.Authentication.Test {
             }
 
             public Task CreateAsync(RefreshToken<T> token, CancellationToken cancellationToken = default) {
-                lock(_sync) _tokens.Add(Clone(token));
+                lock(_sync) {
+                    if(EqualityComparer<T>.Default.Equals(token.Id, default!))
+                        token.Id = (T)Convert.ChangeType(Guid.NewGuid().ToString("N"), typeof(T));
+                    _tokens.Add(Clone(token));
+                }
                 return Task.CompletedTask;
             }
 
@@ -136,6 +140,7 @@ namespace RuntimeApps.Authentication.Test {
                         return Task.FromResult(false);
                     current.RevokedAt = now;
                     current.ReplacedByTokenId = replacement.Id;
+                    current.HasReplacement = true;
                     _tokens.Add(Clone(replacement));
                     return Task.FromResult(true);
                 }
@@ -166,6 +171,7 @@ namespace RuntimeApps.Authentication.Test {
                 ExpiresAt = token.ExpiresAt,
                 RevokedAt = token.RevokedAt,
                 ReplacedByTokenId = token.ReplacedByTokenId,
+                HasReplacement = token.HasReplacement,
                 SessionName = token.SessionName
             };
         }
