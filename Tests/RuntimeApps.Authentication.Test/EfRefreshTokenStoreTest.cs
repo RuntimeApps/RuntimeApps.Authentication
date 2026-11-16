@@ -25,13 +25,13 @@ namespace RuntimeApps.Authentication.Test {
             var original = new RefreshToken<int> {
                 Id = default,
                 UserId = 10,
-                FamilyId = default,
+                FamilyId = Guid.NewGuid(),
                 TokenHash = new string('A', 64),
                 CreatedAt = now,
                 ExpiresAt = now.AddDays(30)
             };
             var replacement = new RefreshToken<int> {
-                Id = Guid.NewGuid(),
+                Id = default,
                 UserId = original.UserId,
                 FamilyId = original.FamilyId,
                 TokenHash = new string('B', 64),
