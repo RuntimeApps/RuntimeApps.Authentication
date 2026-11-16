@@ -23,7 +23,7 @@ namespace RuntimeApps.Authentication.Test {
             var store = new EfRefreshTokenStore<TestDbContext, int>(dbContext);
             var now = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
             var original = new RefreshToken<int> {
-                Id = Guid.NewGuid(),
+                Id = default,
                 UserId = 10,
                 FamilyId = Guid.NewGuid(),
                 TokenHash = new string('A', 64),
@@ -93,7 +93,7 @@ namespace RuntimeApps.Authentication.Test {
         }
 
         private static RefreshToken<int> CreateToken(int userId, Guid familyId, string hashPrefix, DateTimeOffset now) => new() {
-            Id = Guid.NewGuid(),
+            Id = default,
             UserId = userId,
             FamilyId = familyId,
             TokenHash = hashPrefix.PadRight(64, '0'),
