@@ -4,6 +4,7 @@ namespace RuntimeApps.Authentication.Model {
     /// </summary>
     public class RefreshToken<TKey>
         where TKey : IEquatable<TKey> {
+        /// <summary>Primary key using the same type as the associated user identifier.</summary>
         public TKey Id { get; set; }
         public TKey UserId { get; set; }
         /// <summary>Identifies one authenticated client session. All rotations in a session share this value.</summary>
@@ -12,6 +13,7 @@ namespace RuntimeApps.Authentication.Model {
         public DateTimeOffset CreatedAt { get; set; }
         public DateTimeOffset ExpiresAt { get; set; }
         public DateTimeOffset? RevokedAt { get; set; }
+        /// <summary>Identifier of the replacement token, using the same key type as Id and UserId.</summary>
         public TKey ReplacedByTokenId { get; set; }
         /// <summary>Indicates whether this token was rotated and ReplacedByTokenId is populated.</summary>
         public bool HasReplacement { get; set; }
