@@ -134,7 +134,7 @@ namespace RuntimeApps.Authentication.Test {
             public Task<bool> TryRotateAsync(T tokenId, string expectedTokenHash, RefreshToken<T> replacement,
                 DateTimeOffset now, CancellationToken cancellationToken = default) {
                 lock(_sync) {
-                    var current = _tokens.SingleOrDefault(token => token.Id == tokenId &&
+                    var current = _tokens.SingleOrDefault(token => EqualityComparer<T>.Default.Equals(token.Id, tokenId) &&
                         token.TokenHash == expectedTokenHash && token.RevokedAt == null && token.ExpiresAt > now);
                     if(current == null)
                         return Task.FromResult(false);
