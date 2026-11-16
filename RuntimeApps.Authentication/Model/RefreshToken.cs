@@ -12,7 +12,9 @@ namespace RuntimeApps.Authentication.Model {
         public DateTimeOffset CreatedAt { get; set; }
         public DateTimeOffset ExpiresAt { get; set; }
         public DateTimeOffset? RevokedAt { get; set; }
-        public TKey? ReplacedByTokenId { get; set; }
+        public TKey ReplacedByTokenId { get; set; }
+        /// <summary>Indicates whether this token was rotated and ReplacedByTokenId is populated.</summary>
+        public bool HasReplacement { get; set; }
         public string SessionName { get; set; }
     }
 }
