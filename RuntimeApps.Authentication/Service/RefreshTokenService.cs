@@ -32,7 +32,7 @@ namespace RuntimeApps.Authentication.Service {
             var record = new RefreshToken<TKey> {
                 Id = default!,
                 UserId = userId,
-                FamilyId = default,
+                FamilyId = default!,
                 TokenHash = HashToken(rawToken),
                 CreatedAt = now,
                 ExpiresAt = now.Add(_options.TokenLifetime),
@@ -83,7 +83,7 @@ namespace RuntimeApps.Authentication.Service {
                 // request actually consumed and replaced should trigger family-wide revocation.
                 var latest = await _store.FindByHashAsync(tokenHash, cancellationToken);
                 if(latest?.RevokedAt.HasValue == true &&
-                   latest.ReplacedByTokenId.HasValue &&
+                   latest.HasReplacement &&
                    _options.RevokeFamilyOnReuse) {
                     await _store.RevokeFamilyAsync(latest.FamilyId, now, cancellationToken);
                 }
