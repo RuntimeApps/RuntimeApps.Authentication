@@ -25,8 +25,11 @@ namespace RuntimeApps.Authentication.Sample.CookieAuthentication.Migrations
 
             modelBuilder.Entity<RefreshToken<int>>(b =>
                 {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uniqueidentifier");
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<int>("UserId")
                         .HasColumnType("int");
@@ -51,8 +54,11 @@ namespace RuntimeApps.Authentication.Sample.CookieAuthentication.Migrations
                         .HasConversion(new DateTimeOffsetToBinaryConverter())
                         .HasColumnType("bigint");
 
-                    b.Property<Guid?>("ReplacedByTokenId")
-                        .HasColumnType("uniqueidentifier");
+                    b.Property<int>("ReplacedByTokenId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("HasReplacement")
+                        .HasColumnType("bit");
 
                     b.Property<string>("SessionName")
                         .HasMaxLength(100)
