@@ -29,8 +29,18 @@ namespace RuntimeApps.Authentication.EF.Store {
                     ? Guid.NewGuid().ToString("N")
                     : null;
 
-            if(generatedId != null)
+            if(generatedId != null) {
                 token.Id = (TKey)generatedId;
+                return;
+            }
+
+            var keyTypeCode = Type.GetTypeCode(typeof(TKey));
+            if(keyTypeCode is not (TypeCode.Byte or TypeCode.Int16 or TypeCode.Int32 or TypeCode.Int64 or
+                TypeCode.SByte or TypeCode.UInt16 or TypeCode.UInt32 or TypeCode.UInt64)) {
+                throw new NotSupportedException(
+                    $"Refresh-token key type '{typeof(TKey).FullName}' requires a non-default Id before persistence. " +
+                    "Use Guid, string, or an EF-supported generated integer key type.");
+            }
         }
 
         public async Task CreateAsync(RefreshToken<TKey> token, CancellationToken cancellationToken = default) {
