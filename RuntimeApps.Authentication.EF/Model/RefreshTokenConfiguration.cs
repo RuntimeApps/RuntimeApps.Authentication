@@ -10,7 +10,9 @@ namespace RuntimeApps.Authentication.EF.Model {
             builder.ToTable("AuthenticationRefreshTokens");
             builder.HasKey(token => token.Id);
             builder.Property(token => token.Id).ValueGeneratedOnAdd();
-            builder.Property(token => token.ReplacedByTokenId).IsRequired();
+            // Generic reference-type keys (for example string) use null until the first rotation;
+            // value-type keys use their default value and HasReplacement distinguishes that state.
+            builder.Property(token => token.ReplacedByTokenId).IsRequired(typeof(TKey).IsValueType);
             builder.Property(token => token.HasReplacement).IsRequired();
             builder.Property(token => token.UserId).IsRequired();
             if(typeof(TKey) == typeof(string))
