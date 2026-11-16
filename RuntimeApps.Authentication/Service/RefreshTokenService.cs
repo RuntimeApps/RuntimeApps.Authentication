@@ -30,9 +30,9 @@ namespace RuntimeApps.Authentication.Service {
             var now = _timeProvider.GetUtcNow();
             var rawToken = GenerateToken();
             var record = new RefreshToken<TKey> {
-                Id = Guid.NewGuid(),
+                Id = default,
                 UserId = userId,
-                FamilyId = Guid.NewGuid(),
+                FamilyId = default,
                 TokenHash = HashToken(rawToken),
                 CreatedAt = now,
                 ExpiresAt = now.Add(_options.TokenLifetime),
@@ -56,7 +56,7 @@ namespace RuntimeApps.Authentication.Service {
 
             var now = _timeProvider.GetUtcNow();
             if(current.RevokedAt.HasValue) {
-                if(current.ReplacedByTokenId.HasValue && _options.RevokeFamilyOnReuse)
+                if(current.HasReplacement && _options.RevokeFamilyOnReuse)
                     await _store.RevokeFamilyAsync(current.FamilyId, now, cancellationToken);
                 return null;
             }
