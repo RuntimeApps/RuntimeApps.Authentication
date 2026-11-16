@@ -19,7 +19,22 @@ namespace RuntimeApps.Authentication.EF.Store {
                     $"Call modelBuilder.AddRefreshTokenEntity<{typeof(TKey).Name}>() in OnModelCreating.");
         }
 
+        private static void PrepareGeneratedId(RefreshToken<TKey> token) {
+            if(!EqualityComparer<TKey>.Default.Equals(token.Id, default))
+                return;
+
+            object generatedId = typeof(TKey) == typeof(Guid)
+                ? Guid.NewGuid()
+                : typeof(TKey) == typeof(string)
+                    ? Guid.NewGuid().ToString("N")
+                    : null;
+
+            if(generatedId != null)
+                token.Id = (TKey)generatedId;
+        }
+
         public async Task CreateAsync(RefreshToken<TKey> token, CancellationToken cancellationToken = default) {
+            PrepareGeneratedId(token);
             await _dbContext.Set<RefreshToken<TKey>>().AddAsync(token, cancellationToken);
             await _dbContext.SaveChangesAsync(cancellationToken);
         }
@@ -39,22 +54,25 @@ namespace RuntimeApps.Authentication.EF.Store {
                 throw new NotSupportedException("Atomic refresh-token rotation requires a relational EF Core provider.");
 
             await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+            PrepareGeneratedId(replacement);
+            await _dbContext.Set<RefreshToken<TKey>>().AddAsync(replacement, cancellationToken);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
             var affected = await _dbContext.Set<RefreshToken<TKey>>()
-                .Where(token => token.Id == tokenId &&
+                .Where(token => token.Id.Equals(tokenId) &&
                                 token.TokenHash == expectedTokenHash &&
                                 token.RevokedAt == null &&
                                 token.ExpiresAt > now)
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(token => token.RevokedAt, now)
-                    .SetProperty(token => token.ReplacedByTokenId, replacement.Id), cancellationToken);
+                    .SetProperty(token => token.ReplacedByTokenId, replacement.Id)
+                    .SetProperty(token => token.HasReplacement, true), cancellationToken);
 
             if(affected != 1) {
                 await transaction.RollbackAsync(cancellationToken);
                 return false;
             }
 
-            await _dbContext.Set<RefreshToken<TKey>>().AddAsync(replacement, cancellationToken);
-            await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return true;
         }
@@ -67,7 +85,7 @@ namespace RuntimeApps.Authentication.EF.Store {
 
         public async Task<int> RevokeAllAsync(TKey userId, DateTimeOffset revokedAt, CancellationToken cancellationToken = default) =>
             await _dbContext.Set<RefreshToken<TKey>>()
-                .Where(token => token.UserId.Equals(userId) && token.RevokedAt == null)
+                 .Where(token => EqualityComparer<TKey>.Default.Equals(token.UserId, userId) && token.RevokedAt == null)
                 .ExecuteUpdateAsync(setters => setters.SetProperty(token => token.RevokedAt, revokedAt), cancellationToken);
     }
 }
