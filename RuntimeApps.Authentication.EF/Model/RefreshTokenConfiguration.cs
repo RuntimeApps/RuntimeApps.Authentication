@@ -10,6 +10,8 @@ namespace RuntimeApps.Authentication.EF.Model {
             builder.ToTable("AuthenticationRefreshTokens");
             builder.HasKey(token => token.Id);
             builder.Property(token => token.Id).ValueGeneratedOnAdd();
+            builder.Property(token => token.ReplacedByTokenId).IsRequired();
+            builder.Property(token => token.HasReplacement).IsRequired();
             builder.Property(token => token.UserId).IsRequired();
             if(typeof(TKey) == typeof(string))
                 builder.Property(token => token.UserId).HasMaxLength(450);
