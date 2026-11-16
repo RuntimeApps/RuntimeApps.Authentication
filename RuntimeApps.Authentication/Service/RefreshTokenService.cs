@@ -30,7 +30,7 @@ namespace RuntimeApps.Authentication.Service {
             var now = _timeProvider.GetUtcNow();
             var rawToken = GenerateToken();
             var record = new RefreshToken<TKey> {
-                Id = default,
+                Id = default!,
                 UserId = userId,
                 FamilyId = default,
                 TokenHash = HashToken(rawToken),
