@@ -80,7 +80,7 @@ namespace RuntimeApps.Authentication.Controller {
                     throw;
                 }
             })
-            .Accepts<RefreshTokenRequest>("application/json", isOptional: true)
+            .Accepts<RefreshTokenRequest>(true, "application/json")
             .WithSummary("Refresh the current session")
             .WithDescription("JWT clients send a RefreshTokenRequest JSON body. Cookie clients send the refresh-token cookie; the JSON body is optional for cookie authentication.");
 
@@ -110,7 +110,7 @@ namespace RuntimeApps.Authentication.Controller {
                 });
                 return Results.NoContent();
             })
-            .Accepts<RefreshTokenRequest>("application/json", isOptional: true)
+            .Accepts<RefreshTokenRequest>(true, "application/json")
             .WithSummary("Log out the current session")
             .WithDescription("JWT clients send a RefreshTokenRequest JSON body. Cookie clients send the refresh-token cookie; the JSON body is optional for cookie authentication.");
 
