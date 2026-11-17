@@ -1,0 +1,101 @@
+using Microsoft.EntityFrameworkCore;
+using RuntimeApps.Authentication.Interface;
+using RuntimeApps.Authentication.Model;
+
+namespace RuntimeApps.Authentication.EF.Store {
+    /// <summary>
+    /// EF Core store. Atomic rotation requires a relational provider with transaction support.
+    /// </summary>
+    public sealed class EfRefreshTokenStore<TDbContext, TKey> : IRefreshTokenStore<TKey>
+        where TDbContext : DbContext
+        where TKey : IEquatable<TKey> {
+        private readonly TDbContext _dbContext;
+
+        public EfRefreshTokenStore(TDbContext dbContext) {
+            _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
+            if(_dbContext.Model.FindEntityType(typeof(RefreshToken<TKey>)) == null)
+                throw new InvalidOperationException(
+                    $"The DbContext model does not include {typeof(RefreshToken<TKey>).Name}. " +
+                    $"Call modelBuilder.AddRefreshTokenEntity<{typeof(TKey).Name}>() in OnModelCreating.");
+        }
+
+        private static void PrepareGeneratedId(RefreshToken<TKey> token) {
+            if(!EqualityComparer<TKey>.Default.Equals(token.Id, default!))
+                return;
+
+            object generatedId = typeof(TKey) == typeof(Guid)
+                ? Guid.NewGuid()
+                : typeof(TKey) == typeof(string)
+                    ? Guid.NewGuid().ToString("N")
+                    : null;
+
+            if(generatedId != null) {
+                token.Id = (TKey)generatedId;
+                return;
+            }
+
+            var keyTypeCode = Type.GetTypeCode(typeof(TKey));
+            if(keyTypeCode is not (TypeCode.Byte or TypeCode.Int16 or TypeCode.Int32 or TypeCode.Int64 or
+                TypeCode.SByte or TypeCode.UInt16 or TypeCode.UInt32 or TypeCode.UInt64)) {
+                throw new NotSupportedException(
+                    $"Refresh-token key type '{typeof(TKey).FullName}' requires a non-default Id before persistence. " +
+                    "Use Guid, string, or an EF-supported generated integer key type.");
+            }
+        }
+
+        public async Task CreateAsync(RefreshToken<TKey> token, CancellationToken cancellationToken = default) {
+            PrepareGeneratedId(token);
+            await _dbContext.Set<RefreshToken<TKey>>().AddAsync(token, cancellationToken);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        public Task<RefreshToken<TKey>> FindByHashAsync(string tokenHash, CancellationToken cancellationToken = default) =>
+            _dbContext.Set<RefreshToken<TKey>>()
+                .AsNoTracking()
+                .SingleOrDefaultAsync(token => token.TokenHash == tokenHash, cancellationToken);
+
+        public async Task<bool> TryRotateAsync(
+            TKey tokenId,
+            string expectedTokenHash,
+            RefreshToken<TKey> replacement,
+            DateTimeOffset now,
+            CancellationToken cancellationToken = default) {
+            if(!_dbContext.Database.IsRelational())
+                throw new NotSupportedException("Atomic refresh-token rotation requires a relational EF Core provider.");
+
+            await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+            PrepareGeneratedId(replacement);
+            await _dbContext.Set<RefreshToken<TKey>>().AddAsync(replacement, cancellationToken);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            var affected = await _dbContext.Set<RefreshToken<TKey>>()
+                .Where(token => token.Id.Equals(tokenId) &&
+                                token.TokenHash == expectedTokenHash &&
+                                token.RevokedAt == null &&
+                                token.ExpiresAt > now)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(token => token.RevokedAt, now)
+                    .SetProperty(token => token.ReplacedByTokenId, replacement.Id)
+                    .SetProperty(token => token.HasReplacement, true), cancellationToken);
+
+            if(affected != 1) {
+                await transaction.RollbackAsync(cancellationToken);
+                return false;
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+            return true;
+        }
+
+        public async Task RevokeFamilyAsync(Guid familyId, DateTimeOffset revokedAt, CancellationToken cancellationToken = default) {
+            await _dbContext.Set<RefreshToken<TKey>>()
+                .Where(token => token.FamilyId == familyId && token.RevokedAt == null)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(token => token.RevokedAt, revokedAt), cancellationToken);
+        }
+
+        public async Task<int> RevokeAllAsync(TKey userId, DateTimeOffset revokedAt, CancellationToken cancellationToken = default) =>
+            await _dbContext.Set<RefreshToken<TKey>>()
+                 .Where(token => EqualityComparer<TKey>.Default.Equals(token.UserId, userId) && token.RevokedAt == null)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(token => token.RevokedAt, revokedAt), cancellationToken);
+    }
+}

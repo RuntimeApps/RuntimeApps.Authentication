@@ -17,6 +17,11 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddCookie(JwtBearerDefaults.AuthenticationScheme)
     .AddRuntimeAppsAuthentication<IdentityUser<int>, IdentityRole<int>, int>()
     .AddEfStores<ApplicationDbContext, IdentityUser<int>, IdentityRole<int>, int>()
+    .AddEfRefreshTokenStore<ApplicationDbContext, IdentityUser<int>, IdentityRole<int>, int>()
+    .AddRefreshToken(options => {
+        options.TokenLifetime = TimeSpan.FromDays(30);
+        options.RevokeFamilyOnReuse = true;
+    })
     .AddDefaultUserMapper<IdentityUserDto<int>>()
     .AddValidators();
 

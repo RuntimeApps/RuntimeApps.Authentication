@@ -145,3 +145,60 @@ builder.Services.AddTransient<IExternalLoginProvider, CustomeExternalLoginProvid
 ## License
 
 Distributed under the MIT License. See [LICENSE](./LICENSE) for more information.
+
+## Refresh Token Management
+
+Refresh-token support is optional. Existing applications do not issue or require refresh tokens unless they explicitly call `AddRefreshToken()`.
+
+### Enable refresh tokens with EF Core
+
+Register the EF store after the core refresh-token feature. The application DbContext must include the refresh-token entity in its model:
+
+```cs
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddRuntimeAppsAuthentication<IdentityUser<int>, IdentityRole<int>, int>()
+    .AddEfStores<ApplicationDbContext, IdentityUser<int>, IdentityRole<int>, int>()
+    .AddEfRefreshTokenStore<ApplicationDbContext, IdentityUser<int>, IdentityRole<int>, int>()
+    .AddRefreshToken(options => {
+        options.TokenLifetime = TimeSpan.FromDays(30);
+        options.RevokeFamilyOnReuse = true;
+    })
+    .UseJwt(JwtBearerDefaults.AuthenticationScheme, options => {
+        // Configure signing key and token validation as usual.
+    });
+```
+
+In the consumer DbContext, add the entity configuration:
+
+```cs
+protected override void OnModelCreating(ModelBuilder modelBuilder) {
+    base.OnModelCreating(modelBuilder);
+    modelBuilder.AddRefreshTokenEntity<int>();
+}
+```
+
+Create and apply an EF Core migration after adding the entity. The EF store requires a relational EF Core provider because token rotation is performed transactionally. The raw refresh token is never persisted; only its SHA-256 hash is stored.
+
+### Endpoints
+
+When `AddRefreshToken()` is registered, `MapLoginApi` also maps the following endpoints. The refresh endpoint is automatically rate-limited to 30 requests per minute per remote IP; configure `RefreshRequestsPerMinute` to change the limit. The limiter is in-process; multi-instance deployments should also enforce a shared limit at the gateway or through a distributed rate-limiting layer. When running behind a reverse proxy, configure trusted forwarded headers so the partition key reflects the actual client address. No additional rate-limiting middleware setup is required.
+
+| Endpoint | Behavior |
+| --- | --- |
+| `POST /refresh` | Rotates the supplied refresh token and issues a new access token |
+| `POST /logout` | Revokes the session associated with the supplied refresh token |
+| `POST /logout/all` | Revokes all sessions for the authenticated user |
+
+JWT clients send `{ "refreshToken": "..." }` in the request body to `/refresh` and `/logout`. Cookie authentication uses the configured HttpOnly refresh-token cookie. Cookie mode defaults to a Secure, HttpOnly, SameSite=Strict cookie named `__Host-runtimeapps-refresh`; applications may configure its name, path, SameSite mode, and exact cross-origin allowlist through `RefreshTokenOptions.AllowedOrigins`. If SameSite=None is selected, Secure is required. For a cross-origin browser client, configure the expected origin explicitly and review CORS credentials and CSRF requirements before changing cookie defaults.
+
+### Sessions and security behavior
+
+Each successful login creates a separate session (token family). Refresh rotates the token within that family. Reuse of a consumed token revokes only that family, not the user's other sessions. Logout revokes the current family; logout-all revokes all families belonging to the authenticated user. The built-in password-change and add-password endpoints also revoke all refresh-token sessions after a successful password update. Applications implementing password-reset or credential-change flows outside these endpoints should explicitly call `IRefreshTokenService<TKey>.RevokeAllAsync(userId)` after a successful reset.
+
+Refresh tokens are bearer credentials. Clients must store them securely and must not log them. Browser applications should prefer HttpOnly cookies over localStorage. Serialize refresh requests: with strict reuse detection, retrying an old token after a successful rotation (for example, after losing the response) is treated as replay and revokes that session.
+
+Revoking refresh tokens does not immediately invalidate access JWTs already issued. Stateless access tokens remain valid until expiration unless the application adds a separate access-token revocation/session-validation mechanism. Keep access-token lifetimes appropriately short.
+
+### Custom persistence
+
+Applications that do not use the EF integration can implement `IRefreshTokenStore<TKey>` and register it before startup. Store implementations must make `TryRotateAsync` atomic: consuming the old token and persisting its replacement must succeed or fail as one operation. A non-atomic implementation is not safe for production use.

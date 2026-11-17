@@ -1,6 +1,7 @@
-﻿using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Options;
 using RuntimeApps.Authentication.Interface;
 using RuntimeApps.Authentication.Model;
 
@@ -16,6 +17,22 @@ namespace RuntimeApps.Authentication.Service {
         private readonly IHttpContextAccessor _contextAccessor;
         private readonly IUserClaimsPrincipalFactory<TUser> _userClaimsPrincipalFactory;
         private readonly IEnumerable<IExternalLoginProvider<TUser>> _externalLoginProviders;
+        private readonly IRefreshTokenService<TKey> _refreshTokenService;
+        private readonly RefreshTokenOptions _refreshTokenOptions;
+
+        // Preserve the original public constructor for existing compiled consumers.
+        public UserAccountService(IUserManager<TUser> userManager,
+                                  ISignInManager<TUser> signInManager,
+                                  IEnumerable<IExternalLoginProvider<TUser>> externalLoginProviders,
+                                  IAuthenticationHandlerProvider authenticationHandlerProvider,
+                                  IHttpContextAccessor contextAccessor,
+                                  IUserClaimsPrincipalFactory<TUser> userClaimsPrincipalFactory,
+                                  IAuthenticationSchemeProvider authenticationSchemeProvider,
+                                  IJwtProvider<TUser> jwtUtils = null)
+            : this(userManager, signInManager, externalLoginProviders, authenticationHandlerProvider,
+                   contextAccessor, userClaimsPrincipalFactory, authenticationSchemeProvider,
+                   jwtUtils, null, null) {
+        }
 
         public UserAccountService(IUserManager<TUser> userManager,
                                   ISignInManager<TUser> signInManager,
@@ -24,7 +41,9 @@ namespace RuntimeApps.Authentication.Service {
                                   IHttpContextAccessor contextAccessor,
                                   IUserClaimsPrincipalFactory<TUser> userClaimsPrincipalFactory,
                                   IAuthenticationSchemeProvider authenticationSchemeProvider,
-                                  IJwtProvider<TUser> jwtUtils = null) {
+                                  IJwtProvider<TUser> jwtUtils = null,
+                                  IRefreshTokenService<TKey> refreshTokenService = null,
+                                  IOptions<RefreshTokenOptions> refreshTokenOptions = null) {
             _userManager = userManager;
             _signInManager = signInManager;
             _jwtUtils = jwtUtils;
@@ -33,6 +52,8 @@ namespace RuntimeApps.Authentication.Service {
             _contextAccessor = contextAccessor;
             _userClaimsPrincipalFactory = userClaimsPrincipalFactory;
             _authenticationSchemeProvider = authenticationSchemeProvider;
+            _refreshTokenService = refreshTokenService;
+            _refreshTokenOptions = refreshTokenOptions?.Value ?? new RefreshTokenOptions();
         }
 
         public virtual async Task<Result<TUser, Token>> ExternalLoginAsync(string providerName, string token) {
@@ -49,7 +70,6 @@ namespace RuntimeApps.Authentication.Service {
                 user = await _userManager.FindByEmailAsync(userInfo.Email);
                 if(user == null) {
                     user = userInfo;
-
                     var createResult = await _userManager.CreateAsync(user);
                     if(!createResult.Succeeded)
                         return new Result<TUser, Token>(ResultCode.BadRequest, createResult.Errors);
@@ -77,9 +97,8 @@ namespace RuntimeApps.Authentication.Service {
                 return GetIdentityError(SignInResult.Failed);
 
             var signInResult = await _signInManager.PasswordSignInAsync(userInfo, password, true, false);
-            if(!signInResult.Succeeded) {
+            if(!signInResult.Succeeded)
                 return GetIdentityError(signInResult);
-            }
 
             return await GenerateTokenAsync(userInfo);
         }
@@ -89,9 +108,8 @@ namespace RuntimeApps.Authentication.Service {
                 user.UserName = user.Email;
 
             var createResult = await _userManager.CreateAsync(user, password);
-            if(!createResult.Succeeded) {
+            if(!createResult.Succeeded)
                 return new Result<TUser, Token>(ResultCode.BadRequest, createResult.Errors);
-            }
 
             return await GenerateTokenAsync(user);
         }
@@ -116,14 +134,49 @@ namespace RuntimeApps.Authentication.Service {
 
         protected virtual async Task<Result<TUser, Token>> GenerateTokenAsync(TUser user) {
             bool hasHandler = await HasHandlerAsync();
+
             if(hasHandler) {
                 var claims = await _userClaimsPrincipalFactory.CreateAsync(user);
                 await _contextAccessor.HttpContext.SignInAsync(claims);
+
+                if(_refreshTokenService != null) {
+                    var httpContext = _contextAccessor.HttpContext;
+                    var cancellationToken = httpContext?.RequestAborted ?? CancellationToken.None;
+                    var existingRefreshToken = httpContext?.Request.Cookies[_refreshTokenOptions.CookieName];
+                    if(!string.IsNullOrEmpty(existingRefreshToken))
+                        await _refreshTokenService.RevokeAsync(existingRefreshToken, cancellationToken);
+
+                    var refreshSession = await _refreshTokenService.CreateSessionAsync(
+                        user.Id, cancellationToken: cancellationToken);
+                    AppendRefreshCookie(refreshSession.RefreshToken, refreshSession.ExpiresAt);
+                }
                 return new Result<TUser, Token>(user, null);
             }
 
             var token = await _jwtUtils.GenerateTokenAsync(user);
+            if(_refreshTokenService != null) {
+                var cancellationToken = _contextAccessor.HttpContext?.RequestAborted ?? CancellationToken.None;
+                var refreshSession = await _refreshTokenService.CreateSessionAsync(
+                    user.Id, cancellationToken: cancellationToken);
+                token.RefreshToken = refreshSession.RefreshToken;
+                token.RefreshTokenExpireDate = refreshSession.ExpiresAt;
+                token.SessionId = refreshSession.SessionId;
+            }
             return new Result<TUser, Token>(user, token);
+        }
+
+        private void AppendRefreshCookie(string refreshToken, DateTimeOffset expiresAt) {
+            var context = _contextAccessor.HttpContext;
+            if(context == null)
+                throw new InvalidOperationException("An HTTP context is required to issue a refresh-token cookie.");
+
+            context.Response.Cookies.Append(_refreshTokenOptions.CookieName, refreshToken, new CookieOptions {
+                HttpOnly = true,
+                Secure = _refreshTokenOptions.CookieSecure,
+                SameSite = _refreshTokenOptions.CookieSameSite,
+                Path = _refreshTokenOptions.CookiePath,
+                Expires = expiresAt
+            });
         }
 
         private async Task<bool> HasHandlerAsync() {
@@ -136,6 +189,5 @@ namespace RuntimeApps.Authentication.Service {
                 return false;
             return handler is IAuthenticationSignInHandler;
         }
-
     }
 }

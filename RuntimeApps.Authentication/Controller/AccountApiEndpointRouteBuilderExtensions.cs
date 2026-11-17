@@ -35,6 +35,12 @@ namespace RuntimeApps.Authentication.Controller {
                 });
             }
 
+            // Refresh endpoints are exposed only when AddRefreshToken() was used during registration.
+            if(endpoints.ServiceProvider.GetService<IServiceProviderIsService>()
+                ?.IsService(typeof(IRefreshTokenService<TKey>)) == true) {
+                endpoints.MapRefreshTokenApi<TUser, TKey>();
+            }
+
             return endpoints;
         }
 
@@ -65,7 +71,7 @@ namespace RuntimeApps.Authentication.Controller {
                 return user != null ? mapper.ToDto(user) : null;
             });
 
-            authorizedRouteGroup.MapPost("password/change", async Task<Results<Ok, ValidationProblem>> ([FromBody] ChangePasswordModel input, IUserManager<TUser> userManager, HttpContext httpContext) => {
+            authorizedRouteGroup.MapPost("password/change", async Task<Results<Ok, ValidationProblem>> ([FromBody] ChangePasswordModel input, IUserManager<TUser> userManager, HttpContext httpContext, IServiceProvider services) => {
                 var user = await userManager.GetUserAsync(httpContext.User);
                 if(user == null)
                     return ValidationProblemFactory.CreateValidationProblem("NoAccess", "Cannot change password without login");
@@ -74,10 +80,14 @@ namespace RuntimeApps.Authentication.Controller {
                 if(!result.Succeeded)
                     return result.CreateValidationProblem();
 
+                var refreshTokenService = services.GetService<IRefreshTokenService<TKey>>();
+                if(refreshTokenService != null)
+                    await refreshTokenService.RevokeAllAsync(user.Id, httpContext.RequestAborted);
+
                 return TypedResults.Ok();
             });
 
-            authorizedRouteGroup.MapPost("password", async Task<Results<Ok, ValidationProblem>> ([FromBody] string password, IUserManager<TUser> userManager, HttpContext httpContext) => {
+            authorizedRouteGroup.MapPost("password", async Task<Results<Ok, ValidationProblem>> ([FromBody] string password, IUserManager<TUser> userManager, HttpContext httpContext, IServiceProvider services) => {
                 var user = await userManager.GetUserAsync(httpContext.User);
                 if(user == null)
                     return ValidationProblemFactory.CreateValidationProblem("NoAccess", "Cannot change password without login");
@@ -85,6 +95,10 @@ namespace RuntimeApps.Authentication.Controller {
                 var result = await userManager.AddPasswordAsync(user, password);
                 if(!result.Succeeded)
                     return result.CreateValidationProblem();
+
+                var refreshTokenService = services.GetService<IRefreshTokenService<TKey>>();
+                if(refreshTokenService != null)
+                    await refreshTokenService.RevokeAllAsync(user.Id, httpContext.RequestAborted);
 
                 return TypedResults.Ok();
             });

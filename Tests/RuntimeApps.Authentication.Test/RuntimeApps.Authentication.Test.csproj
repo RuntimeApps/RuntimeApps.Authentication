@@ -11,10 +11,12 @@
     <PackageReference Include="FluentAssertions" Version="8.11.0" />
     <PackageReference Include="Moq" Version="4.21.0" />
     <PackageReference Include="xunit.v3" Version="4.0.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\RuntimeApps.Authentication\RuntimeApps.Authentication.csproj" />
+    <ProjectReference Include="..\..\RuntimeApps.Authentication.EF\RuntimeApps.Authentication.EF.csproj" />
   </ItemGroup>
 
 </Project>
