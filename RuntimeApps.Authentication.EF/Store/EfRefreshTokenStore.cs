@@ -95,7 +95,7 @@ namespace RuntimeApps.Authentication.EF.Store {
 
         public async Task<int> RevokeAllAsync(TKey userId, DateTimeOffset revokedAt, CancellationToken cancellationToken = default) =>
             await _dbContext.Set<RefreshToken<TKey>>()
-                 .Where(token => EqualityComparer<TKey>.Default.Equals(token.UserId, userId) && token.RevokedAt == null)
+                 .Where(token => object.Equals(token.UserId, userId) && token.RevokedAt == null)
                 .ExecuteUpdateAsync(setters => setters.SetProperty(token => token.RevokedAt, revokedAt), cancellationToken);
     }
 }
