@@ -79,7 +79,10 @@ namespace RuntimeApps.Authentication.Controller {
                     await refreshTokenService.RevokeAsync(session.RefreshToken, CancellationToken.None);
                     throw;
                 }
-            });
+            })
+            .Accepts<RefreshTokenRequest>("application/json", isOptional: true)
+            .WithSummary("Refresh the current session")
+            .WithDescription("JWT clients send a RefreshTokenRequest JSON body. Cookie clients send the refresh-token cookie; the JSON body is optional for cookie authentication.");
 
             routes.MapPost("logout", async Task<IResult> (HttpContext context,
                 IRefreshTokenService<TKey> refreshTokenService,
@@ -106,7 +109,10 @@ namespace RuntimeApps.Authentication.Controller {
                     SameSite = options.Value.CookieSameSite
                 });
                 return Results.NoContent();
-            });
+            })
+            .Accepts<RefreshTokenRequest>("application/json", isOptional: true)
+            .WithSummary("Log out the current session")
+            .WithDescription("JWT clients send a RefreshTokenRequest JSON body. Cookie clients send the refresh-token cookie; the JSON body is optional for cookie authentication.");
 
             routes.MapPost("logout/all", async Task<IResult> (HttpContext context,
                 IUserManager<TUser> userManager,
