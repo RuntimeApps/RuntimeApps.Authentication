@@ -153,7 +153,6 @@ namespace RuntimeApps.Authentication.EF.Store {
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(item => item.CodeVerifier, newCodeVerifier)
                     .SetProperty(item => item.CodeVersion, item => item.CodeVersion + 1)
-                    .SetProperty(item => item.FailedAttempts, 0)
                     .SetProperty(item => item.SendCount, item => item.SendCount + 1)
                     .SetProperty(item => item.LastSentAt, now)
                     .SetProperty(item => item.ExpiresAt, expiresAt), cancellationToken);
