@@ -202,3 +202,78 @@ Revoking refresh tokens does not immediately invalidate access JWTs already issu
 ### Custom persistence
 
 Applications that do not use the EF integration can implement `IRefreshTokenStore<TKey>` and register it before startup. Store implementations must make `TryRotateAsync` atomic: consuming the old token and persisting its replacement must succeed or fail as one operation. A non-atomic implementation is not safe for production use.
+
+
+## Registration with email verification
+
+Public registration uses a verification workflow instead of issuing an access token immediately. This is a major-version API change: `IUserAccountService.RegisterAsync` has been replaced by `IRegistrationService<TUser, TKey>`.
+
+### Configure the workflow
+
+Call `AddVerificationServices` when configuring RuntimeApps Authentication. Register a persistent implementation of `IVerificationRequestStore<TKey>` and a delivery implementation of `IVerificationSender<TUser, TKey>`. The EF integration provides a relational store:
+
+```cs
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddRuntimeAppsAuthentication<IdentityUser<int>, IdentityRole<int>, int>()
+    .AddVerificationServices(options => {
+        options.CodeLength = 6;
+        options.CodeLifetime = TimeSpan.FromMinutes(10);
+        options.MaximumFailedAttempts = 5;
+        options.ResendCooldown = TimeSpan.FromSeconds(60);
+        options.MaximumSendsPerHour = 5;
+        options.RequireEmailVerificationForExternalLogins = false;
+    })
+    .AddEfStores<ApplicationDbContext, IdentityUser<int>, IdentityRole<int>, int>();
+
+// In ApplicationDbContext.OnModelCreating:
+modelBuilder.AddVerificationRequestEntity<int>();
+
+builder.Services.AddVerificationRequestStore<ApplicationDbContext, int>();
+```
+
+The DbContext must use a relational provider. Verification state changes and destination-level rate limits rely on atomic relational operations; EF InMemory is not supported. Add a migration after adding the verification entities.
+
+The optional `RuntimeApps.Authentication.MailKit` package provides an SMTP sender without adding MailKit to the core package:
+
+```cs
+builder.Services.AddMailKitVerificationSender<IdentityUser<int>, int>(options => {
+    options.Host = configuration["Authentication:Verification:Smtp:Host"];
+    options.Port = 587;
+    options.SocketOptions = MailKit.Security.SecureSocketOptions.StartTls;
+    options.UserName = configuration["Authentication:Verification:Smtp:UserName"];
+    options.Password = configuration["Authentication:Verification:Smtp:Password"];
+    options.FromAddress = configuration["Authentication:Verification:Smtp:FromAddress"];
+});
+```
+
+Keep SMTP credentials in user secrets, environment variables, or a secret manager. Persist and share the ASP.NET Core Data Protection key ring across application instances.
+
+### Registration endpoints
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| POST | `/register` | Create or recover a pending account and send a verification code |
+| POST | `/register/verify` | Verify the code and receive an authentication token |
+| POST | `/register/resend` | Send a replacement code; the previous code becomes invalid |
+
+The API returns an opaque, cryptographically random verification handle. Only its SHA-256 lookup hash is stored; the database request ID is never exposed. The code is protected using ASP.NET Core Data Protection and bound to the user, request, purpose, channel, and destination.
+
+Default limits are six numeric digits, ten-minute lifetime, five failed attempts, a 60-second resend cooldown, and five sends per destination/purpose/channel per hour. A successful verification is single-use. A resend rotates the code. The EF store uses relational transactions and conditional updates for concurrent operations.
+
+Repeating registration recovers a pending account if the client lost its handle. It does not replace the password on an existing pending account. The default updater changes only the username and phone number; implement `IUserRegistrationUpdater<TUser>` to allow other safe profile fields. Do not copy passwords, roles, claims, security stamps, or external logins from an unauthenticated repeat request.
+
+### Administrator provisioning
+
+Map `MapAdminUserApi<TUser, TUserDto, TKey>()` separately from public registration. By default, the endpoint requires the `Administrator` role. Alternatively, pass a named authorization policy. It creates an already-confirmed user, returns the user DTO, and does not issue an authentication token.
+
+### External login policy
+
+External provider login does not require a second email challenge by default. Set `RequireEmailVerificationForExternalLogins = true` to require email verification before issuing an application token when the provider email is not trusted.
+
+External authentication and email confirmation remain separate. The default trust policy accepts verified Google Gmail/Googlemail addresses and verified Google Workspace addresses when the signed hosted-domain claim matches the email domain. Facebook and Microsoft email claims are not trusted by default. Developers can replace `IExternalLoginEmailTrustPolicy<TUser>`.
+
+External identities are not automatically linked to an existing local account based on a matching email address. Linking must be initiated from an authenticated account-management flow.
+
+### Migration note
+
+This is a breaking major-version change. Remove calls to the old immediate-token registration API and use the verification endpoints. Applications must add the verification entities to their relational DbContext and create a migration, configure a persistent request store and sender, and review administrator authorization policy. No production in-memory verification store is provided.

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -24,8 +25,8 @@ namespace RuntimeApps.Authentication.Service {
             ArgumentNullException.ThrowIfNull(request);
 
             var payload = JsonSerializer.Serialize(new VerificationCodePayload(
-                Convert.ToString(request.Id),
-                Convert.ToString(request.UserId),
+                Convert.ToString(request.Id, CultureInfo.InvariantCulture),
+                Convert.ToString(request.UserId, CultureInfo.InvariantCulture),
                 request.Purpose,
                 request.Channel,
                 request.CustomPurpose,
@@ -44,8 +45,8 @@ namespace RuntimeApps.Authentication.Service {
                 var payload = JsonSerializer.Deserialize<VerificationCodePayload>(
                     _protector.Unprotect(request.CodeVerifier));
                 if(payload == null ||
-                   payload.RequestId != Convert.ToString(request.Id) ||
-                   payload.UserId != Convert.ToString(request.UserId) ||
+                   payload.RequestId != Convert.ToString(request.Id, CultureInfo.InvariantCulture) ||
+                   payload.UserId != Convert.ToString(request.UserId, CultureInfo.InvariantCulture) ||
                    payload.Purpose != request.Purpose ||
                    payload.Channel != request.Channel ||
                    payload.CustomPurpose != request.CustomPurpose ||

@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Builder;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
@@ -71,6 +72,9 @@ namespace RuntimeApps.Authentication.Controller {
                 IRegistrationService<TUser, TKey> registrationService,
                 [FromServices] IUserMapper<TUser, TUserDto> mapper,
                 HttpContext httpContext) => {
+                if(user?.UserInfo == null)
+                    return ValidationProblemFactory.CreateValidationProblem("InvalidRegistration", "User information is required.");
+
                 var result = await registrationService.RegisterAsync(
                     mapper.ToUser(user.UserInfo), user.Password, httpContext.RequestAborted);
                 if(!result.Succeeded)
@@ -83,6 +87,9 @@ namespace RuntimeApps.Authentication.Controller {
                 IRegistrationService<TUser, TKey> registrationService,
                 [FromServices] IUserMapper<TUser, TUserDto> mapper,
                 HttpContext httpContext) => {
+                if(request == null)
+                    return ValidationProblemFactory.CreateValidationProblem("InvalidVerification", "Verification handle and code are required.");
+
                 var result = await registrationService.VerifyAsync(
                     request.VerificationHandle, request.Code, httpContext.RequestAborted);
                 if(!result.Succeeded)
@@ -94,6 +101,9 @@ namespace RuntimeApps.Authentication.Controller {
                 [FromBody] ResendRegistrationVerificationModel request,
                 IRegistrationService<TUser, TKey> registrationService,
                 HttpContext httpContext) => {
+                if(request == null)
+                    return ValidationProblemFactory.CreateValidationProblem("InvalidVerification", "Verification handle is required.");
+
                 var result = await registrationService.ResendAsync(
                     request.VerificationHandle, httpContext.RequestAborted);
                 if(!result.Succeeded)
@@ -121,7 +131,7 @@ namespace RuntimeApps.Authentication.Controller {
 
             var routeGroup = endpoints.MapGroup("admin/users");
             if(string.IsNullOrWhiteSpace(authorizationPolicy))
-                routeGroup.RequireAuthorization();
+                routeGroup.RequireAuthorization(new AuthorizeAttribute { Roles = "Administrator" });
             else
                 routeGroup.RequireAuthorization(authorizationPolicy);
 

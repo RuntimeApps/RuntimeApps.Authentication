@@ -43,7 +43,9 @@ namespace RuntimeApps.Authentication.Service {
                 return GenericResponse();
 
             if(existingUser != null) {
+                var existingEmail = existingUser.Email;
                 await _userUpdater.UpdatePendingUserAsync(existingUser, user, cancellationToken);
+                existingUser.Email = existingEmail;
                 var updateResult = await _userManager.UpdateAsync(existingUser);
                 if(!updateResult.Succeeded)
                     return new Result<RegistrationVerificationResponse>(ResultCode.BadRequest, updateResult.Errors);
@@ -59,7 +61,9 @@ namespace RuntimeApps.Authentication.Service {
                     if(racedUser == null)
                         return new Result<RegistrationVerificationResponse>(ResultCode.BadRequest, createResult.Errors);
 
+                    var racedEmail = racedUser.Email;
                     await _userUpdater.UpdatePendingUserAsync(racedUser, user, cancellationToken);
+                    racedUser.Email = racedEmail;
                     var updateResult = await _userManager.UpdateAsync(racedUser);
                     if(!updateResult.Succeeded)
                         return new Result<RegistrationVerificationResponse>(ResultCode.BadRequest, updateResult.Errors);

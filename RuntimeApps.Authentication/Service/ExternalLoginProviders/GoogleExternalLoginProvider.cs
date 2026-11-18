@@ -1,6 +1,5 @@
 ﻿using Google.Apis.Auth;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using RuntimeApps.Authentication.Interface;
 using RuntimeApps.Authentication.Model;
@@ -8,7 +7,6 @@ using RuntimeApps.Authentication.Model;
 namespace RuntimeApps.Authentication.Service.ExternalLoginProviders {
     public class GoogleExternalLoginProvider<TUser>: IExternalLoginProvider<TUser>
         where TUser : class, new() {
-        private readonly ILogger<GoogleExternalLoginProvider<TUser>> _logger;
         private readonly IOptions<GoogleExternalLoginOption<TUser>> _option;
 
         public GoogleExternalLoginProvider(ILogger<GoogleExternalLoginProvider<TUser>> logger, IOptions<GoogleExternalLoginOption<TUser>> option) {

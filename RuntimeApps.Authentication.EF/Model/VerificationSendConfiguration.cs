@@ -13,6 +13,7 @@ namespace RuntimeApps.Authentication.EF.Model {
             builder.Property(send => send.Purpose).HasConversion<string>().HasMaxLength(32).IsRequired();
             builder.Property(send => send.Channel).HasConversion<string>().HasMaxLength(32).IsRequired();
             builder.Property(send => send.SentAt).HasConversion(new DateTimeOffsetToBinaryConverter());
+            builder.HasIndex(send => send.SentAt);
             builder.HasIndex(send => new {
                 send.NormalizedDestination,
                 send.Purpose,

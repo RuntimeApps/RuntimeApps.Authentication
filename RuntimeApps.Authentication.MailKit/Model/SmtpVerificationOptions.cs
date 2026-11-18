@@ -1,3 +1,4 @@
+using System.Net.Mail;
 using MailKit.Security;
 
 namespace RuntimeApps.Authentication.MailKit.Model {
@@ -13,11 +14,19 @@ namespace RuntimeApps.Authentication.MailKit.Model {
         public string FromName { get; set; } = "Account verification";
         public string ApplicationName { get; set; } = "Application";
 
-        public bool IsValid() =>
-            !string.IsNullOrWhiteSpace(Host) &&
-            Port is > 0 and <= 65535 &&
-            !string.IsNullOrWhiteSpace(FromAddress) &&
-            ((!string.IsNullOrWhiteSpace(UserName) && !string.IsNullOrEmpty(Password)) ||
-             (string.IsNullOrWhiteSpace(UserName) && string.IsNullOrEmpty(Password)));
+        public bool IsValid() {
+            if(string.IsNullOrWhiteSpace(Host) || Port is <= 0 or > 65535 ||
+               string.IsNullOrWhiteSpace(FromAddress) ||
+               !((!string.IsNullOrWhiteSpace(UserName) && !string.IsNullOrEmpty(Password)) ||
+                 (string.IsNullOrWhiteSpace(UserName) && string.IsNullOrEmpty(Password))))
+                return false;
+
+            try {
+                _ = new MailAddress(FromAddress);
+                return true;
+            } catch(FormatException) {
+                return false;
+            }
+        }
     }
 }

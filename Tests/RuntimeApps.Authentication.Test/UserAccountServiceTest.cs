@@ -235,49 +235,28 @@ namespace RuntimeApps.Authentication.Test {
         }
 
         [Fact]
-        public async Task ExternalLogin_Success_ExistUser() {
-            //Arrange
-            string provider = "Google", token = "token";
-            var user = new IdentityUser() {
-                Email = "test@test.com"
-            };
-            var appToken = new Model.Token() {
-                AuthenticationToken = "",
-                ExpireDate = DateTimeOffset.Now.AddDays(30),
-            };
+        public async Task ExternalLogin_ExistingEmail_DoesNotAutomaticallyLink() {
+            const string provider = "Google";
+            const string token = "provider-token";
+            var existingUser = new IdentityUser { Email = "existing@example.com", EmailConfirmed = true };
             var loginInfo = new UserLoginInfo(provider, token, provider);
-            _externalLoginProvider1.SetupGet(e => e.Provider)
-                .Returns("Not Selected Provided");
-            _externalLoginProvider2.SetupGet(e => e.Provider)
-                .Returns(provider);
-            _externalLoginProvider2.Setup(e => e.ValidateAsync(token))
+            _externalLoginProvider1.SetupGet(item => item.Provider).Returns("Not Selected");
+            _externalLoginProvider2.SetupGet(item => item.Provider).Returns(provider);
+            _externalLoginProvider2.Setup(item => item.ValidateAsync(token))
                 .ReturnsAsync(new RuntimeApps.Authentication.Model.ExternalLoginProviderResult<IdentityUser> {
-                    User = user, LoginInfo = loginInfo, Email = user.Email, EmailVerified = false
+                    User = new IdentityUser { Email = existingUser.Email },
+                    LoginInfo = loginInfo,
+                    Email = existingUser.Email,
+                    EmailVerified = true
                 });
-            _userManagerMock.Setup(u => u.FindByLoginAsync(provider, token))
-                .ReturnsAsync(nullUSer);
-            _userManagerMock.Setup(u => u.FindByEmailAsync(user.Email))
-                .ReturnsAsync(user);
-            _externalLoginEmailTrustPolicyMock.Setup(policy => policy.IsEmailTrusted(
-                provider, It.IsAny<RuntimeApps.Authentication.Model.ExternalLoginProviderResult<IdentityUser>>()))
-                .Returns(true);
-            _userManagerMock.Setup(u => u.UpdateAsync(user)).ReturnsAsync(IdentityResult.Success);
-            _userManagerMock.Setup(u => u.AddLoginAsync(user, loginInfo))
-                .ReturnsAsync(IdentityResult.Success);
-            _jwtProviderMock.Setup(t => t.GenerateTokenAsync(user))
-                .ReturnsAsync(appToken);
+            _userManagerMock.Setup(manager => manager.FindByLoginAsync(provider, token)).ReturnsAsync((IdentityUser)null);
+            _userManagerMock.Setup(manager => manager.FindByEmailAsync(existingUser.Email)).ReturnsAsync(existingUser);
 
-            //Act
             var result = await _userAccountService.ExternalLoginAsync(provider, token);
 
-            //Assert
-            result.Succeeded.Should().BeTrue();
-            result.Data.Should().NotBeNull()
-                .And.Be(user);
-            result.Meta.Should().NotBeNull()
-                .And.Be(appToken);
-            _userManagerMock.Verify(u => u.CreateAsync(It.IsAny<IdentityUser>()), Times.Never());
-            _userManagerMock.Verify(u => u.AddLoginAsync(It.IsAny<IdentityUser>(), It.IsAny<UserLoginInfo>()), Times.Once());
+            Assert.False(result.Succeeded);
+            Assert.Equal(RuntimeApps.Authentication.Model.ResultCode.Conflict, result.Code);
+            _userManagerMock.Verify(manager => manager.AddLoginAsync(It.IsAny<IdentityUser>(), It.IsAny<UserLoginInfo>()), Times.Never());
         }
 
         [Fact]

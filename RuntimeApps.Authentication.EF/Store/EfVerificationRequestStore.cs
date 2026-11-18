@@ -51,6 +51,8 @@ namespace RuntimeApps.Authentication.EF.Store {
             await using var transaction = await _dbContext.Database.BeginTransactionAsync(
                 IsolationLevel.Serializable, cancellationToken);
 
+            await Sends.Where(item => item.SentAt < sendsSince).ExecuteDeleteAsync(cancellationToken);
+
             var sendCount = await Sends.CountAsync(item =>
                 item.NormalizedDestination == request.NormalizedDestination &&
                 item.Purpose == request.Purpose &&
@@ -130,6 +132,8 @@ namespace RuntimeApps.Authentication.EF.Store {
                 await transaction.RollbackAsync(cancellationToken);
                 return false;
             }
+
+            await Sends.Where(item => item.SentAt < sendsSince).ExecuteDeleteAsync(cancellationToken);
 
             var sendCount = await Sends.CountAsync(item =>
                 item.NormalizedDestination == request.NormalizedDestination &&

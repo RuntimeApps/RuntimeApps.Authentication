@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.DependencyInjection;
 using RuntimeApps.Authentication.Model;
 using RuntimeApps.Authentication.Service;
 
@@ -29,6 +31,29 @@ namespace RuntimeApps.Authentication.Test {
 
             Assert.Equal(6, code.Length);
             Assert.All(code, character => Assert.InRange(character, '0', '9'));
+        }
+
+        [Fact]
+        public void DataProtectionVerifier_BindsCodeToRequestAndDestination() {
+            var services = new ServiceCollection();
+            services.AddDataProtection();
+            using var provider = services.BuildServiceProvider();
+            var verifier = new DataProtectionVerificationCodeVerifier<string>(
+                provider.GetRequiredService<IDataProtectionProvider>());
+            var request = new VerificationRequest<string> {
+                Id = "request-1",
+                UserId = "user-1",
+                Purpose = VerificationPurpose.Registration,
+                Channel = VerificationChannel.Email,
+                NormalizedDestination = "PERSON@EXAMPLE.COM"
+            };
+            request.CodeVerifier = verifier.CreateVerifier("123456", request);
+
+            Assert.True(verifier.Verify("123456", request));
+            Assert.False(verifier.Verify("123457", request));
+
+            request.NormalizedDestination = "OTHER@EXAMPLE.COM";
+            Assert.False(verifier.Verify("123456", request));
         }
 
         [Fact]

@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 using RuntimeApps.Authentication.Interface;
@@ -78,6 +79,8 @@ namespace RuntimeApps.Authentication.Service {
 
             var context = CreateContext(user, request);
             var code = await _generator.GenerateAsync(context, _options, cancellationToken);
+            if(string.IsNullOrWhiteSpace(code))
+                return VerificationOperationResult.Failure("VerificationCodeGenerationFailed", "A verification code could not be generated.");
             var protectedVerifier = _verifier.CreateVerifier(code, request);
 
             if(!await _store.TrySetInitialVerifierAsync(
@@ -104,12 +107,20 @@ namespace RuntimeApps.Authentication.Service {
                request.Purpose != expectedPurpose || request.Channel != expectedChannel)
                 return VerificationOperationResult.Failure("VerificationRequestUnavailable", "The verification request is unavailable.");
 
-            var user = await _userManager.FindByIdAsync(Convert.ToString(request.UserId));
+            var user = await _userManager.FindByIdAsync(Convert.ToString(request.UserId, CultureInfo.InvariantCulture));
             if(user == null)
+                return VerificationOperationResult.Failure("VerificationRequestUnavailable", "The verification request is unavailable.");
+
+            if(request.Channel == VerificationChannel.Email &&
+               (request.Purpose == VerificationPurpose.Registration || request.Purpose == VerificationPurpose.EmailChange) &&
+               !string.Equals(_normalizer.NormalizeEmail(user.Email ?? string.Empty),
+                   request.NormalizedDestination, StringComparison.Ordinal))
                 return VerificationOperationResult.Failure("VerificationRequestUnavailable", "The verification request is unavailable.");
 
             var context = CreateContext(user, request);
             var code = await _generator.GenerateAsync(context, _options, cancellationToken);
+            if(string.IsNullOrWhiteSpace(code))
+                return VerificationOperationResult.Failure("VerificationCodeGenerationFailed", "A verification code could not be generated.");
             var newVerifier = _verifier.CreateVerifier(code, request);
             var expiresAt = now.Add(_options.CodeLifetime);
 
@@ -156,7 +167,7 @@ namespace RuntimeApps.Authentication.Service {
             if(!await _store.TryConsumeAsync(request.Id, request.CodeVersion, now, cancellationToken))
                 return Failure("VerificationRequestUnavailable", "The verification request is unavailable.");
 
-            var user = await _userManager.FindByIdAsync(Convert.ToString(request.UserId));
+            var user = await _userManager.FindByIdAsync(Convert.ToString(request.UserId, CultureInfo.InvariantCulture));
             if(user == null)
                 return Failure("VerificationRequestUnavailable", "The verification request is unavailable.");
 

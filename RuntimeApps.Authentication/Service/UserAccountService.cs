@@ -148,7 +148,7 @@ namespace RuntimeApps.Authentication.Service {
 
         public virtual async Task<Result<TUser, Token>> LoginAsync(string userName, string password) {
             var userInfo = await _userManager.FindByNameAsync(userName);
-            if(userInfo == null)
+            if(userInfo == null || !userInfo.EmailConfirmed)
                 return GetIdentityError(SignInResult.Failed);
 
             var signInResult = await _signInManager.PasswordSignInAsync(userInfo, password, true, false);

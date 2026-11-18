@@ -3,6 +3,8 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using MailKit.Security;
+using RuntimeApps.Authentication.MailKit.Extensions;
 using Microsoft.IdentityModel.Tokens;
 using RuntimeApps.Authentication.Controller;
 using RuntimeApps.Authentication.EF.Extensions;
@@ -12,11 +14,20 @@ using RuntimeApps.Authentication.Sample;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseInMemoryDatabase("TestDatabase"));
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseSqlite(builder.Configuration.GetConnectionString("Authentication") ?? "Data Source=authentication.db"));
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     //Add default services of RuntimeApps application
     .AddRuntimeAppsAuthentication<IdentityUser<int>, IdentityRole<int>, int>()
+    .AddVerificationServices(options => {
+        options.CodeLength = 6;
+        options.CodeLifetime = TimeSpan.FromMinutes(10);
+        options.MaximumFailedAttempts = 5;
+        options.ResendCooldown = TimeSpan.FromSeconds(60);
+        options.MaximumSendsPerHour = 5;
+        options.RequireEmailVerificationForExternalLogins = false;
+    })
     //Add implemetation of entity framework core user stores.
     .AddEfStores<ApplicationDbContext, IdentityUser<int>, IdentityRole<int>, int>()
     // Add default mapper between IdentityUser and IdentityUserDto
@@ -64,6 +75,18 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         option.Mapper = (data) => MicrosoftExternalLoginOption<IdentityUser<int>>.UserIdentityMapper<IdentityUser<int>, int>(data);
     });
 
+builder.Services.AddVerificationRequestStore<ApplicationDbContext, int>();
+builder.Services.AddMailKitVerificationSender<IdentityUser<int>, int>(options => {
+    options.Host = builder.Configuration["Authentication:Verification:Smtp:Host"] ?? "localhost";
+    options.Port = builder.Configuration.GetValue("Authentication:Verification:Smtp:Port", 1025);
+    options.SocketOptions = builder.Configuration.GetValue("Authentication:Verification:Smtp:SocketOptions", SecureSocketOptions.None);
+    options.FromAddress = builder.Configuration["Authentication:Verification:Smtp:FromAddress"] ?? "noreply@example.com";
+    options.FromName = "RuntimeApps Authentication Sample";
+    options.ApplicationName = "RuntimeApps Authentication Sample";
+});
+
+builder.Services.AddAuthorization(options => options.AddPolicy("Admin", policy => policy.RequireRole("Administrator")));
+
 builder.Services.AddControllers()
     .AddJsonOptions(option => {
         option.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
@@ -80,7 +103,7 @@ if(app.Environment.IsDevelopment()) {
         var services = scope.ServiceProvider;
         try {
             var context = services.GetRequiredService<ApplicationDbContext>();
-            context.Database.Migrate();
+            context.Database.EnsureCreated();
         } catch(Exception ex) {
             var logger = services.GetRequiredService<ILogger<Program>>();
             logger.LogError(ex, "An error occurred while seeding the database.");
@@ -99,6 +122,10 @@ app.MapGroup("api")
     .WithTags("Authentication APIs")
     .MapLoginApi<IdentityUser<int>, IdentityUserDto<int>, int>()
     .MapRegisterApi<IdentityUser<int>, IdentityUserDto<int>, int>();
+
+app.MapGroup("api")
+    .WithTags("Administrator APIs")
+    .MapAdminUserApi<IdentityUser<int>, IdentityUserDto<int>, int>("Admin");
 
 app.MapGroup("api/account")
     .WithTags("Account APIs")
