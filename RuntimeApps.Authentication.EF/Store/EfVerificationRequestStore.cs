@@ -74,7 +74,7 @@ namespace RuntimeApps.Authentication.EF.Store {
                     item => item.Status, VerificationRequestStatus.Superseded), cancellationToken);
 
             PrepareGeneratedId(request);
-            await Requests.AddAsync(request, cancellationToken);
+            await _dbContext.Set<VerificationRequest<TKey>>().AddAsync(request, cancellationToken);
             await _dbContext.Set<VerificationSend>().AddAsync(new VerificationSend {
                 NormalizedDestination = request.NormalizedDestination,
                 Purpose = request.Purpose,
