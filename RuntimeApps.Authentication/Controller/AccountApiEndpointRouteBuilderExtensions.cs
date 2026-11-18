@@ -79,7 +79,7 @@ namespace RuntimeApps.Authentication.Controller {
                     mapper.ToUser(user.UserInfo), user.Password, httpContext.RequestAborted);
                 if(!result.Succeeded)
                     return result.CreateValidationProblem();
-                return TypedResults.Accepted(value: result);
+                return TypedResults.Accepted(uri: null, value: result);
             });
 
             routeGroup.MapPost("register/verify", async Task<Results<Ok<Result<TUserDto, Token>>, ValidationProblem>> (
@@ -108,7 +108,7 @@ namespace RuntimeApps.Authentication.Controller {
                     request.VerificationHandle, httpContext.RequestAborted);
                 if(!result.Succeeded)
                     return result.CreateValidationProblem();
-                return TypedResults.Accepted(value: result);
+                return TypedResults.Accepted(uri: null, value: result);
             });
 
             return endpoints;
