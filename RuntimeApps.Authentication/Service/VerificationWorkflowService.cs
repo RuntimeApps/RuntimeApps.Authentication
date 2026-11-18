@@ -160,9 +160,13 @@ namespace RuntimeApps.Authentication.Service {
             if(user == null)
                 return Failure("VerificationRequestUnavailable", "The verification request is unavailable.");
 
-            if(request.Purpose == VerificationPurpose.Registration ||
-               request.Purpose == VerificationPurpose.EmailChange)
+            if(request.Channel == VerificationChannel.Email &&
+               (request.Purpose == VerificationPurpose.Registration || request.Purpose == VerificationPurpose.EmailChange)) {
+                var currentEmail = _normalizer.NormalizeEmail(user.Email ?? string.Empty);
+                if(!string.Equals(currentEmail, request.NormalizedDestination, StringComparison.Ordinal))
+                    return Failure("VerificationDestinationChanged", "The email address associated with this request has changed.");
                 user.EmailConfirmed = true;
+            }
 
             var updateResult = await _userManager.UpdateAsync(user);
             if(!updateResult.Succeeded)

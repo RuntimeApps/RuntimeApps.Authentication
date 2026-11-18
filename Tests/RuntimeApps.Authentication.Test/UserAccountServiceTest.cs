@@ -281,6 +281,31 @@ namespace RuntimeApps.Authentication.Test {
         }
 
         [Fact]
+        public async Task ExternalLogin_UnverifiedEmail_DoesNotLinkExistingAccount() {
+            const string provider = "Google";
+            const string token = "provider-token";
+            var user = new IdentityUser { Email = "existing@example.com", EmailConfirmed = true };
+            var loginInfo = new UserLoginInfo(provider, token, provider);
+            _externalLoginProvider1.SetupGet(item => item.Provider).Returns("Not Selected");
+            _externalLoginProvider2.SetupGet(item => item.Provider).Returns(provider);
+            _externalLoginProvider2.Setup(item => item.ValidateAsync(token))
+                .ReturnsAsync(new RuntimeApps.Authentication.Model.ExternalLoginProviderResult<IdentityUser> {
+                    User = new IdentityUser { Email = user.Email },
+                    LoginInfo = loginInfo,
+                    Email = user.Email,
+                    EmailVerified = false
+                });
+            _userManagerMock.Setup(manager => manager.FindByLoginAsync(provider, token)).ReturnsAsync((IdentityUser)null);
+            _userManagerMock.Setup(manager => manager.FindByEmailAsync(user.Email)).ReturnsAsync(user);
+
+            var result = await _userAccountService.ExternalLoginAsync(provider, token);
+
+            result.Succeeded.Should().BeFalse();
+            result.Code.Should().Be(RuntimeApps.Authentication.Model.ResultCode.Conflict);
+            _userManagerMock.Verify(manager => manager.AddLoginAsync(It.IsAny<IdentityUser>(), It.IsAny<UserLoginInfo>()), Times.Never());
+        }
+
+        [Fact]
         public async Task ExternalLogin_Success_ExistsLogin() {
             //Arrange
             string provider = "Google", token = "token";

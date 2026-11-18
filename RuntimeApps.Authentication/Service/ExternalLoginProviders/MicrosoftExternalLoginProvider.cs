@@ -17,11 +17,11 @@ namespace RuntimeApps.Authentication.Service.ExternalLoginProviders {
 
         public string Provider => "MICROSOFT";
 
-        public async Task<ExternalLoginProviderResult<TUser>> ValidateAsync(string token) {
+        public async Task<(TUser, UserLoginInfo)> ValidateAsync(string token) {
             var option = _options.Value;
 
             var openidConfiguration = await OpenIdConnectConfigurationRetriever.GetAsync(
-                    $"{option.IssuerEndpoint}{option.ConfigurationAddress}", CancellationToken.None);
+                    new Uri(new Uri(option.IssuerEndpoint), option.ConfigurationAddress.TrimStart('/')).ToString(), CancellationToken.None);
 
 
             var tokenHandler = new JwtSecurityTokenHandler();

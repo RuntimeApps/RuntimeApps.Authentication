@@ -104,6 +104,50 @@ namespace RuntimeApps.Authentication.Controller {
             return endpoints;
         }
 
+        /// <summary>
+        /// Maps an administrator-only endpoint for creating users that are already email-confirmed.
+        /// No authentication token is issued by this endpoint.
+        /// </summary>
+        public static IEndpointRouteBuilder MapAdminUserApi<TUser, TUserDto, TKey>(
+            this IEndpointRouteBuilder endpoints,
+            string authorizationPolicy = null)
+            where TUser : IdentityUser<TKey>
+            where TUserDto : class
+            where TKey : IEquatable<TKey> {
+            var serviceAvailability = endpoints.ServiceProvider.GetRequiredService<IServiceProviderIsService>();
+            if(!serviceAvailability.IsService(typeof(IUserManager<TUser>)) ||
+               !serviceAvailability.IsService(typeof(IUserMapper<TUser, TUserDto>)))
+                throw new InvalidOperationException("Admin user endpoints require IUserManager and the configured user mapper.");
+
+            var routeGroup = endpoints.MapGroup("admin/users");
+            if(string.IsNullOrWhiteSpace(authorizationPolicy))
+                routeGroup.RequireAuthorization();
+            else
+                routeGroup.RequireAuthorization(authorizationPolicy);
+
+            routeGroup.MapPost("", async Task<Results<Ok<TUserDto>, ValidationProblem>> (
+                [FromBody] RegisterUserModel<TUserDto> request,
+                IUserManager<TUser> userManager,
+                [FromServices] IUserMapper<TUser, TUserDto> mapper) => {
+                if(request?.UserInfo == null || string.IsNullOrEmpty(request.Password))
+                    return ValidationProblemFactory.CreateValidationProblem(
+                        "InvalidUser", "User information and password are required.");
+
+                var user = mapper.ToUser(request.UserInfo);
+                if(string.IsNullOrWhiteSpace(user.UserName))
+                    user.UserName = user.Email;
+                user.EmailConfirmed = true;
+
+                var result = await userManager.CreateAsync(user, request.Password);
+                if(!result.Succeeded)
+                    return result.CreateValidationProblem();
+
+                return TypedResults.Ok(mapper.ToDto(user));
+            });
+
+            return endpoints;
+        }
+
         public static IEndpointRouteBuilder MapAccountApi<TUser, TUserDto, TKey>(this IEndpointRouteBuilder endpoints)
         where TUser : IdentityUser<TKey>
         where TUserDto : class
