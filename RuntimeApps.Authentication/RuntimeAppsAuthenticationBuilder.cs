@@ -24,6 +24,7 @@ namespace RuntimeApps.Authentication {
 
         public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddAuthenticationServices() {
             Services.TryAddScoped<IUserAccountService<TUser>, UserAccountService<TUser, TKey>>();
+            Services.TryAddScoped<IExternalLoginEmailTrustPolicy<TUser>, DefaultExternalLoginEmailTrustPolicy<TUser>>();
 
             Services.AddHttpContextAccessor();
             // Identity services

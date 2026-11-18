@@ -17,7 +17,7 @@ namespace RuntimeApps.Authentication.Service.ExternalLoginProviders {
 
         public string Provider => "MICROSOFT";
 
-        public async Task<(TUser, UserLoginInfo)> ValidateAsync(string token) {
+        public async Task<ExternalLoginProviderResult<TUser>> ValidateAsync(string token) {
             var option = _options.Value;
 
             var openidConfiguration = await OpenIdConnectConfigurationRetriever.GetAsync(

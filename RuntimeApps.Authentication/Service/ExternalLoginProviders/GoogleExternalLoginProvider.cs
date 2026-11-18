@@ -18,7 +18,7 @@ namespace RuntimeApps.Authentication.Service.ExternalLoginProviders {
 
         public string Provider => "GOOGLE";
 
-        public async Task<(TUser, UserLoginInfo)> ValidateAsync(string token) {
+        public async Task<ExternalLoginProviderResult<TUser>> ValidateAsync(string token) {
             try {
                 var option = _option.Value;
                 var settings = new GoogleJsonWebSignature.ValidationSettings() {
@@ -27,7 +27,7 @@ namespace RuntimeApps.Authentication.Service.ExternalLoginProviders {
                 GoogleJsonWebSignature.Payload payload = await GoogleJsonWebSignature.ValidateAsync(token, settings);
                 var user = option.Mapper(payload);
                 var userLogin = new UserLoginInfo(Provider, payload.Subject, Provider);
-                return (user, userLogin);
+                return new ExternalLoginProviderResult<TUser> {\n                    User = user,\n                    LoginInfo = userLogin,\n                    Email = payload.Email,\n                    EmailVerified = payload.EmailVerified,\n                    HostedDomain = payload.HostedDomain\n                };
             } catch(Exception ex) {
                 _logger.LogError(ex, ex.Message);
                 return (null, null);

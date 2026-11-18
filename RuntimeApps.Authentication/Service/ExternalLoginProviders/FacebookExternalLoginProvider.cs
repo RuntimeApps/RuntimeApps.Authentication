@@ -16,7 +16,7 @@ namespace RuntimeApps.Authentication.Service.ExternalLoginProviders {
 
         public string Provider => "FACEBOOK";
 
-        public async Task<(TUser, UserLoginInfo)> ValidateAsync(string token) {
+        public async Task<ExternalLoginProviderResult<TUser>> ValidateAsync(string token) {
             var option = _options.Value;
             using HttpClient httpClient = new HttpClient();
 
