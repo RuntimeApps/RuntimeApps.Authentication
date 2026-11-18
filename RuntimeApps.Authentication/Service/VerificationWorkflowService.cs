@@ -49,7 +49,9 @@ namespace RuntimeApps.Authentication.Service {
             _options.Validate();
 
             var now = _timeProvider.GetUtcNow();
-            var normalizedDestination = NormalizeDestination(destination, channel);
+            var normalizedDestination = channel == VerificationChannel.Email
+                ? _normalizer.NormalizeEmail(destination.Trim())
+                : destination.Trim();
             var handle = VerificationHandle.Create();
             var request = new VerificationRequest<TKey> {
                 UserId = user.Id,
@@ -88,6 +90,8 @@ namespace RuntimeApps.Authentication.Service {
 
         public async Task<VerificationOperationResult> ResendAsync(
             string verificationHandle,
+            VerificationPurpose expectedPurpose,
+            VerificationChannel expectedChannel,
             CancellationToken cancellationToken = default) {
             if(string.IsNullOrWhiteSpace(verificationHandle))
                 return VerificationOperationResult.Failure("InvalidVerificationHandle", "The verification request is invalid.");
@@ -96,7 +100,8 @@ namespace RuntimeApps.Authentication.Service {
                 VerificationHandle.ComputeHash(verificationHandle), cancellationToken);
             var now = _timeProvider.GetUtcNow();
 
-            if(request == null || request.Status != VerificationRequestStatus.Pending)
+            if(request == null || request.Status != VerificationRequestStatus.Pending ||
+               request.Purpose != expectedPurpose || request.Channel != expectedChannel)
                 return VerificationOperationResult.Failure("VerificationRequestUnavailable", "The verification request is unavailable.");
 
             var user = await _userManager.FindByIdAsync(Convert.ToString(request.UserId));
@@ -127,6 +132,8 @@ namespace RuntimeApps.Authentication.Service {
         public async Task<Result<TUser>> VerifyAsync(
             string verificationHandle,
             string code,
+            VerificationPurpose expectedPurpose,
+            VerificationChannel expectedChannel,
             CancellationToken cancellationToken = default) {
             if(string.IsNullOrWhiteSpace(verificationHandle) || string.IsNullOrWhiteSpace(code))
                 return Failure("InvalidVerificationCode", "The verification code is invalid.");
@@ -135,7 +142,9 @@ namespace RuntimeApps.Authentication.Service {
                 VerificationHandle.ComputeHash(verificationHandle), cancellationToken);
             var now = _timeProvider.GetUtcNow();
 
-            if(request == null || request.Status != VerificationRequestStatus.Pending || request.ExpiresAt <= now)
+            if(request == null || request.Status != VerificationRequestStatus.Pending ||
+               request.Purpose != expectedPurpose || request.Channel != expectedChannel ||
+               request.ExpiresAt <= now)
                 return Failure("VerificationRequestUnavailable", "The verification request is unavailable.");
 
             if(!_verifier.Verify(code, request)) {
@@ -161,11 +170,6 @@ namespace RuntimeApps.Authentication.Service {
 
             return new Result<TUser>(user);
         }
-
-        private string NormalizeDestination(string destination, VerificationChannel channel) =>
-            channel == VerificationChannel.Email
-                ? _normalizer.NormalizeEmail(destination.Trim())
-                : destination.Trim();
 
         private VerificationCodeContext<TUser, TKey> CreateContext(TUser user, VerificationRequest<TKey> request) =>
             new() {

@@ -103,15 +103,13 @@ namespace RuntimeApps.Authentication.Service {
             return await GenerateTokenAsync(userInfo);
         }
 
-        public virtual async Task<Result<TUser, Token>> RegisterAsync(TUser user, string password) {
-            if(string.IsNullOrEmpty(user.UserName))
-                user.UserName = user.Email;
+        public virtual Task<Result<TUser, Token>> CompleteRegistrationAsync(TUser user) {
+            if(user == null || !user.EmailConfirmed)
+                return Task.FromResult(new Result<TUser, Token>(
+                    ResultCode.Forbidden,
+                    Result.CreateErrors("EmailNotConfirmed", "The account must complete email verification before registration can be completed.")));
 
-            var createResult = await _userManager.CreateAsync(user, password);
-            if(!createResult.Succeeded)
-                return new Result<TUser, Token>(ResultCode.BadRequest, createResult.Errors);
-
-            return await GenerateTokenAsync(user);
+            return GenerateTokenAsync(user);
         }
 
         protected virtual Result<TUser, Token> GetIdentityError(SignInResult signInResult) {

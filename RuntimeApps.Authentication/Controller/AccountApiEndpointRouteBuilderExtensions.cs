@@ -45,16 +45,60 @@ namespace RuntimeApps.Authentication.Controller {
         }
 
         public static IEndpointRouteBuilder MapRegisterApi<TUser, TUserDto, TKey>(this IEndpointRouteBuilder endpoints)
-            where TUser : IdentityUser<TKey>
+            where TUser : IdentityUser<TKey>, new()
             where TUserDto : class
             where TKey : IEquatable<TKey> {
+            var serviceAvailability = endpoints.ServiceProvider.GetRequiredService<IServiceProviderIsService>();
+            var requiredServices = new[] {
+                typeof(IRegistrationService<TUser, TKey>),
+                typeof(IVerificationWorkflowService<TUser, TKey>),
+                typeof(IVerificationRequestStore<TKey>),
+                typeof(IVerificationSender<TUser, TKey>),
+                typeof(IUserAccountService<TUser>),
+                typeof(IUserMapper<TUser, TUserDto>)
+            };
+            var missingServices = requiredServices.Where(type => !serviceAvailability.IsService(type)).ToArray();
+            if(missingServices.Length > 0)
+                throw new InvalidOperationException(
+                    "Registration endpoints require verification services, a persistent verification request store, " +
+                    "a verification sender, an account service, and a user mapper. Missing: " +
+                    string.Join(", ", missingServices.Select(type => type.Name)));
+
             var routeGroup = endpoints.MapGroup("");
 
-            routeGroup.MapPost("register", async Task<Results<Ok<Result<TUserDto, Token>>, ValidationProblem>> ([FromBody] RegisterUserModel<TUserDto> user, IUserAccountService<TUser> userAccountService, [FromServices] IUserMapper<TUser, TUserDto> mapper) => {
-                var result = await userAccountService.RegisterAsync(mapper.ToUser(user.UserInfo), user.Password);
+            routeGroup.MapPost("register", async Task<Results<Accepted<Result<RegistrationVerificationResponse>>, ValidationProblem>> (
+                [FromBody] RegisterUserModel<TUserDto> user,
+                IRegistrationService<TUser, TKey> registrationService,
+                [FromServices] IUserMapper<TUser, TUserDto> mapper,
+                HttpContext httpContext) => {
+                var result = await registrationService.RegisterAsync(
+                    mapper.ToUser(user.UserInfo), user.Password, httpContext.RequestAborted);
+                if(!result.Succeeded)
+                    return result.CreateValidationProblem();
+                return TypedResults.Accepted(value: result);
+            });
+
+            routeGroup.MapPost("register/verify", async Task<Results<Ok<Result<TUserDto, Token>>, ValidationProblem>> (
+                [FromBody] VerifyRegistrationModel request,
+                IRegistrationService<TUser, TKey> registrationService,
+                [FromServices] IUserMapper<TUser, TUserDto> mapper,
+                HttpContext httpContext) => {
+                var result = await registrationService.VerifyAsync(
+                    request.VerificationHandle, request.Code, httpContext.RequestAborted);
                 if(!result.Succeeded)
                     return result.CreateValidationProblem();
                 return TypedResults.Ok(MapResult<TUser, TUserDto, TKey>(result, mapper));
+            });
+
+            routeGroup.MapPost("register/resend", async Task<Results<Accepted<Result<RegistrationVerificationResponse>>, ValidationProblem>> (
+                [FromBody] ResendRegistrationVerificationModel request,
+                IRegistrationService<TUser, TKey> registrationService,
+                HttpContext httpContext) => {
+                var result = await registrationService.ResendAsync(
+                    request.VerificationHandle, httpContext.RequestAborted);
+                if(!result.Succeeded)
+                    return result.CreateValidationProblem();
+                return TypedResults.Accepted(value: result);
             });
 
             return endpoints;

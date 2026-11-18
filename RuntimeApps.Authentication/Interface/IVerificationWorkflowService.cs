@@ -13,11 +13,15 @@ namespace RuntimeApps.Authentication.Interface {
 
         Task<VerificationOperationResult> ResendAsync(
             string verificationHandle,
+            VerificationPurpose expectedPurpose,
+            VerificationChannel expectedChannel,
             CancellationToken cancellationToken = default);
 
         Task<Result<TUser>> VerifyAsync(
             string verificationHandle,
             string code,
+            VerificationPurpose expectedPurpose,
+            VerificationChannel expectedChannel,
             CancellationToken cancellationToken = default);
     }
 }

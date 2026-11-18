@@ -113,79 +113,30 @@ namespace RuntimeApps.Authentication.Test {
         }
 
         [Fact]
-        public async Task Register_Success() {
-            //Arrange
-            string password = "password";
-            var user = new IdentityUser() {
-                Email = "test@test.com"
-            };
-            var token = new Model.Token() {
+        public async Task CompleteRegistration_Success_ConfirmedUser() {
+            var user = new IdentityUser { Email = "test@test.com", EmailConfirmed = true };
+            var token = new Model.Token {
                 AuthenticationToken = "",
                 ExpireDate = DateTimeOffset.Now.AddDays(30),
             };
-            _userManagerMock.Setup(u => u.FindByNameAsync(user.Email))
-                .ReturnsAsync(nullUSer);
-            _userManagerMock.Setup(u => u.CreateAsync(user, password))
-                .ReturnsAsync(IdentityResult.Success);
-            _jwtProviderMock.Setup(t => t.GenerateTokenAsync(user))
-                .ReturnsAsync(token);
+            _jwtProviderMock.Setup(provider => provider.GenerateTokenAsync(user)).ReturnsAsync(token);
 
-            //Act
-            var result = await _userAccountService.RegisterAsync(user, password);
+            var result = await _userAccountService.CompleteRegistrationAsync(user);
 
-            //Assert
             result.Succeeded.Should().BeTrue();
-            result.Data.Should().NotBeNull()
-                .And.Be(user);
-            result.Data.UserName.Should().Be(result.Data.Email);
-            result.Meta.Should().NotBeNull()
-                .And.Be(token);
+            result.Data.Should().Be(user);
+            result.Meta.Should().Be(token);
         }
 
         [Fact]
-        public async Task Register_UserExist() {
-            //Arrange
-            string password = "password";
-            var user = new IdentityUser() {
-                Email = "test@test.com"
-            };
-            _userManagerMock.Setup(u => u.CreateAsync(user, password))
-                .ReturnsAsync(IdentityResult.Failed(new IdentityError {
-                    Code = "Failed",
-                    Description = "User Exist!"
-                }));
+        public async Task CompleteRegistration_UnconfirmedUser_IsRejected() {
+            var user = new IdentityUser { Email = "test@test.com", EmailConfirmed = false };
 
-            //Act
-            var result = await _userAccountService.RegisterAsync(user, password);
+            var result = await _userAccountService.CompleteRegistrationAsync(user);
 
-            //Assert
             result.Succeeded.Should().BeFalse();
-            result.Data.Should().BeNull();
-            result.Meta.Should().BeNull();
-        }
-
-        [Fact]
-        public async Task Register_ValidateError() {
-            //Arrange
-            string password = "password";
-            var user = new IdentityUser() {
-                Email = "test@test.com"
-            };
-            _userManagerMock.Setup(u => u.CreateAsync(user, password))
-                .ReturnsAsync(IdentityResult.Failed(new IdentityError[] {
-                    new IdentityError {
-                        Code = "InvalidPassword",
-                        Description = "Password must be more than 6 character"
-                    }
-                }));
-
-            //Act
-            var result = await _userAccountService.RegisterAsync(user, password);
-
-            //Assert
-            result.Succeeded.Should().BeFalse();
-            result.Data.Should().BeNull();
-            result.Meta.Should().BeNull();
+            result.Code.Should().Be(RuntimeApps.Authentication.Model.ResultCode.Forbidden);
+            _jwtProviderMock.Verify(provider => provider.GenerateTokenAsync(It.IsAny<IdentityUser>()), Times.Never());
         }
 
         [Fact]
