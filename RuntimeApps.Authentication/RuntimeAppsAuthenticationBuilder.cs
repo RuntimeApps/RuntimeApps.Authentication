@@ -49,6 +49,31 @@ namespace RuntimeApps.Authentication {
             return this;
         }
 
+        /// <summary>
+        /// Registers the default verification workflow, secure code generation, and protected verifier.
+        /// The application must also register a persistent IVerificationRequestStore and a delivery sender.
+        /// </summary>
+        public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddVerificationServices(
+            Action<VerificationOptions> configureOptions = null) {
+            Services.AddDataProtection();
+            Services.AddOptions<VerificationOptions>()
+                .Configure(options => configureOptions?.Invoke(options))
+                .Validate(options => options.CodeLength is >= 4 and <= 12 &&
+                                     options.CodeLifetime > TimeSpan.Zero &&
+                                     options.MaximumFailedAttempts > 0 &&
+                                     options.ResendCooldown >= TimeSpan.Zero &&
+                                     options.MaximumSendsPerHour > 0,
+                    "Verification options contain invalid values.")
+                .ValidateOnStart();
+
+            Services.Configure<IdentityOptions>(options => options.SignIn.RequireConfirmedEmail = true);
+            Services.TryAddSingleton(TimeProvider.System);
+            Services.TryAddScoped<IVerificationCodeGenerator<TUser, TKey>, RandomVerificationCodeGenerator<TUser, TKey>>();
+            Services.TryAddScoped<IVerificationCodeVerifier<TKey>, DataProtectionVerificationCodeVerifier<TKey>>();
+            Services.TryAddScoped<IVerificationWorkflowService<TUser, TKey>, VerificationWorkflowService<TUser, TKey>>();
+            return this;
+        }
+
         public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> UseJwt(string authenticationScheme, Action<JwtBearerOptions> configureOptions) {
             Services.TryAddScoped<IJwtProvider<TUser>, JwtProvider<TUser, TKey>>();
             Services.Configure(configureOptions);
