@@ -76,8 +76,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 
 builder.Services.AddVerificationRequestStore<ApplicationDbContext, int>();
-builder.Services.Configure<SmtpVerificationOptions>(
-    builder.Configuration.GetSection(SmtpVerificationOptions.SectionName));
+builder.Services.AddOptions<SmtpVerificationOptions>()
+    .BindConfiguration(SmtpVerificationOptions.SectionName)
+    .Validate(options => options.IsValid(), "SMTP verification options are invalid.")
+    .ValidateOnStart();
 builder.Services.AddScoped<IVerificationSender<IdentityUser<int>, int>,
     MailKitVerificationSender<IdentityUser<int>, int>>();
 
