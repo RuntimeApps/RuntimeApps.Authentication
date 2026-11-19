@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Builder;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
@@ -45,16 +46,113 @@ namespace RuntimeApps.Authentication.Controller {
         }
 
         public static IEndpointRouteBuilder MapRegisterApi<TUser, TUserDto, TKey>(this IEndpointRouteBuilder endpoints)
-            where TUser : IdentityUser<TKey>
+            where TUser : IdentityUser<TKey>, new()
             where TUserDto : class
             where TKey : IEquatable<TKey> {
+            var serviceAvailability = endpoints.ServiceProvider.GetRequiredService<IServiceProviderIsService>();
+            var requiredServices = new[] {
+                typeof(IRegistrationService<TUser, TKey>),
+                typeof(IVerificationWorkflowService<TUser, TKey>),
+                typeof(IVerificationRequestStore<TKey>),
+                typeof(IVerificationSender<TUser, TKey>),
+                typeof(IUserAccountService<TUser>),
+                typeof(IUserMapper<TUser, TUserDto>)
+            };
+            var missingServices = requiredServices.Where(type => !serviceAvailability.IsService(type)).ToArray();
+            if(missingServices.Length > 0)
+                throw new InvalidOperationException(
+                    "Registration endpoints require verification services, a persistent verification request store, " +
+                    "a verification sender, an account service, and a user mapper. Missing: " +
+                    string.Join(", ", missingServices.Select(type => type.Name)));
+
             var routeGroup = endpoints.MapGroup("");
 
-            routeGroup.MapPost("register", async Task<Results<Ok<Result<TUserDto, Token>>, ValidationProblem>> ([FromBody] RegisterUserModel<TUserDto> user, IUserAccountService<TUser> userAccountService, [FromServices] IUserMapper<TUser, TUserDto> mapper) => {
-                var result = await userAccountService.RegisterAsync(mapper.ToUser(user.UserInfo), user.Password);
+            routeGroup.MapPost("register", async Task<Results<Accepted<Result<RegistrationVerificationResponse>>, ValidationProblem>> (
+                [FromBody] RegisterUserModel<TUserDto> user,
+                IRegistrationService<TUser, TKey> registrationService,
+                [FromServices] IUserMapper<TUser, TUserDto> mapper,
+                HttpContext httpContext) => {
+                if(user?.UserInfo == null)
+                    return ValidationProblemFactory.CreateValidationProblem("InvalidRegistration", "User information is required.");
+
+                var result = await registrationService.RegisterAsync(
+                    mapper.ToUser(user.UserInfo), user.Password, httpContext.RequestAborted);
+                if(!result.Succeeded)
+                    return result.CreateValidationProblem();
+                return TypedResults.Accepted((string)null, result);
+            });
+
+            routeGroup.MapPost("register/verify", async Task<Results<Ok<Result<TUserDto, Token>>, ValidationProblem>> (
+                [FromBody] VerifyRegistrationModel request,
+                IRegistrationService<TUser, TKey> registrationService,
+                [FromServices] IUserMapper<TUser, TUserDto> mapper,
+                HttpContext httpContext) => {
+                if(request == null)
+                    return ValidationProblemFactory.CreateValidationProblem("InvalidVerification", "Verification handle and code are required.");
+
+                var result = await registrationService.VerifyAsync(
+                    request.VerificationHandle, request.Code, httpContext.RequestAborted);
                 if(!result.Succeeded)
                     return result.CreateValidationProblem();
                 return TypedResults.Ok(MapResult<TUser, TUserDto, TKey>(result, mapper));
+            });
+
+            routeGroup.MapPost("register/resend", async Task<Results<Accepted<Result<RegistrationVerificationResponse>>, ValidationProblem>> (
+                [FromBody] ResendRegistrationVerificationModel request,
+                IRegistrationService<TUser, TKey> registrationService,
+                HttpContext httpContext) => {
+                if(request == null)
+                    return ValidationProblemFactory.CreateValidationProblem("InvalidVerification", "Verification handle is required.");
+
+                var result = await registrationService.ResendAsync(
+                    request.VerificationHandle, httpContext.RequestAborted);
+                if(!result.Succeeded)
+                    return result.CreateValidationProblem();
+                return TypedResults.Accepted((string)null, result);
+            });
+
+            return endpoints;
+        }
+
+        /// <summary>
+        /// Maps an administrator-only endpoint for creating users that are already email-confirmed.
+        /// No authentication token is issued by this endpoint.
+        /// </summary>
+        public static IEndpointRouteBuilder MapAdminUserApi<TUser, TUserDto, TKey>(
+            this IEndpointRouteBuilder endpoints,
+            string authorizationPolicy = null)
+            where TUser : IdentityUser<TKey>
+            where TUserDto : class
+            where TKey : IEquatable<TKey> {
+            var serviceAvailability = endpoints.ServiceProvider.GetRequiredService<IServiceProviderIsService>();
+            if(!serviceAvailability.IsService(typeof(IUserManager<TUser>)) ||
+               !serviceAvailability.IsService(typeof(IUserMapper<TUser, TUserDto>)))
+                throw new InvalidOperationException("Admin user endpoints require IUserManager and the configured user mapper.");
+
+            var routeGroup = endpoints.MapGroup("admin/users");
+            if(string.IsNullOrWhiteSpace(authorizationPolicy))
+                routeGroup.RequireAuthorization(new AuthorizeAttribute { Roles = "Administrator" });
+            else
+                routeGroup.RequireAuthorization(authorizationPolicy);
+
+            routeGroup.MapPost("", async Task<Results<Ok<TUserDto>, ValidationProblem>> (
+                [FromBody] RegisterUserModel<TUserDto> request,
+                IUserManager<TUser> userManager,
+                [FromServices] IUserMapper<TUser, TUserDto> mapper) => {
+                if(request?.UserInfo == null || string.IsNullOrEmpty(request.Password))
+                    return ValidationProblemFactory.CreateValidationProblem(
+                        "InvalidUser", "User information and password are required.");
+
+                var user = mapper.ToUser(request.UserInfo);
+                if(string.IsNullOrWhiteSpace(user.UserName))
+                    user.UserName = user.Email;
+                user.EmailConfirmed = true;
+
+                var result = await userManager.CreateAsync(user, request.Password);
+                if(!result.Succeeded)
+                    return result.CreateValidationProblem();
+
+                return TypedResults.Ok(mapper.ToDto(user));
             });
 
             return endpoints;

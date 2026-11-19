@@ -1,9 +1,8 @@
-﻿using Microsoft.AspNetCore.Identity;
+using RuntimeApps.Authentication.Model;
 
 namespace RuntimeApps.Authentication.Interface {
-    public interface IExternalLoginProvider<TUser>
-        where TUser : class {
+    public interface IExternalLoginProvider<TUser> where TUser : class {
         string Provider { get; }
-        Task<(TUser, UserLoginInfo)> ValidateAsync(string token);
+        Task<ExternalLoginProviderResult<TUser>> ValidateAsync(string token);
     }
 }

@@ -24,8 +24,10 @@ namespace RuntimeApps.Authentication {
 
         public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddAuthenticationServices() {
             Services.TryAddScoped<IUserAccountService<TUser>, UserAccountService<TUser, TKey>>();
+            Services.TryAddScoped<IExternalLoginEmailTrustPolicy<TUser>, DefaultExternalLoginEmailTrustPolicy<TUser>>();
 
             Services.AddHttpContextAccessor();
+            Services.AddHttpClient();
             // Identity services
             Services.TryAddScoped<IUserValidator<TUser>, UserValidator<TUser>>();
             Services.TryAddScoped<IPasswordValidator<TUser>, PasswordValidator<TUser>>();
@@ -46,6 +48,32 @@ namespace RuntimeApps.Authentication {
             Services.TryAddScoped<IRoleManager<TRole>, RuntimeAppsRoleManager<TRole>>();
 
             AddBuiltInUserMappers();
+            return this;
+        }
+
+        /// <summary>
+        /// Registers the default verification workflow, secure code generation, and protected verifier.
+        /// The application must also register a persistent IVerificationRequestStore and a delivery sender.
+        /// </summary>
+        public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddVerificationServices(
+            Action<VerificationOptions> configureOptions = null) {
+            Services.AddDataProtection();
+            Services.AddOptions<VerificationOptions>()
+                .Configure(options => configureOptions?.Invoke(options))
+                .Validate(options => options.CodeLength is >= 4 and <= 12 &&
+                                     options.CodeLifetime > TimeSpan.Zero &&
+                                     options.MaximumFailedAttempts > 0 &&
+                                     options.ResendCooldown >= TimeSpan.Zero &&
+                                     options.MaximumSendsPerHour > 0,
+                    "Verification options contain invalid values.")
+                .ValidateOnStart();
+
+            Services.Configure<IdentityOptions>(options => options.SignIn.RequireConfirmedEmail = true);
+            Services.TryAddSingleton(TimeProvider.System);
+            Services.TryAddScoped<IVerificationCodeGenerator<TUser, TKey>, RandomVerificationCodeGenerator<TUser, TKey>>();
+            Services.TryAddScoped<IVerificationCodeVerifier<TKey>, DataProtectionVerificationCodeVerifier<TKey>>();
+            Services.TryAddScoped<IVerificationWorkflowService<TUser, TKey>, VerificationWorkflowService<TUser, TKey>>();
+            Services.TryAddScoped<IRegistrationService<TUser, TKey>, RegistrationService<TUser, TKey>>();
             return this;
         }
 

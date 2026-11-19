@@ -29,7 +29,8 @@ namespace RuntimeApps.Authentication.Controller {
                 IServiceProvider services,
                 IAuthenticationSchemeProvider schemeProvider,
                 IAuthenticationHandlerProvider handlerProvider,
-                IOptions<RefreshTokenOptions> options) => {
+                IOptions<RefreshTokenOptions> options,
+                IOptions<VerificationOptions> verificationOptions) => {
                 if(!await requestLimiter.IsAllowedAsync(context, context.RequestAborted))
                     return Results.StatusCode(StatusCodes.Status429TooManyRequests);
 
@@ -48,10 +49,18 @@ namespace RuntimeApps.Authentication.Controller {
                 if(session == null)
                     return Results.Unauthorized();
 
-                var user = await userManager.FindByIdAsync(Convert.ToString(session.UserId));
-                if(user == null ||
-                   await userManager.IsLockedOutAsync(user) ||
-                   !await signInManager.CanSignInAsync(user)) {
+                var user = await userManager.FindByIdAsync(Convert.ToString(session.UserId, System.Globalization.CultureInfo.InvariantCulture));
+                if(user == null) {
+                    await refreshTokenService.RevokeAsync(session.RefreshToken, context.RequestAborted);
+                    return Results.Unauthorized();
+                }
+
+                var isLockedOut = await userManager.IsLockedOutAsync(user);
+                var hasExternalLogin = (await userManager.GetLoginsAsync(user)).Count > 0;
+                var emailPolicyAllowsSignIn = user.EmailConfirmed ||
+                    (hasExternalLogin && !verificationOptions.Value.RequireEmailVerificationForExternalLogins);
+                if(isLockedOut || !emailPolicyAllowsSignIn ||
+                   (user.EmailConfirmed && !await signInManager.CanSignInAsync(user))) {
                     await refreshTokenService.RevokeAsync(session.RefreshToken, context.RequestAborted);
                     return Results.Unauthorized();
                 }

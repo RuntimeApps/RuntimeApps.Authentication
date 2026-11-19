@@ -99,3 +99,31 @@ app.MapGroup("api").MapLoginApi<IdentityUser, IdentityUserDto, string>()
                    .MapRegisterApi<IdentityUser, IdentityUserDto, string>();
 app.MapGroup("api/account").MapAccountApi<IdentityUser, IdentityUserDto, string>();
 ```
+
+
+## Email verification
+
+The basic sample uses SQLite (a relational provider is required by the atomic verification store) and demonstrates an SMTP sender implemented with MailKit. MailKit is referenced only by this sample; the authentication library itself does not provide or require an email-delivery implementation. The sample defaults to a local SMTP development server at `localhost:1025` without TLS. Run Mailpit or configure SMTP through environment variables/user secrets before testing registration.
+
+The sample's DbContext includes the verification entities:
+
+```cs
+protected override void OnModelCreating(ModelBuilder modelBuilder) {
+    base.OnModelCreating(modelBuilder);
+    modelBuilder.AddVerificationRequestEntity<int>();
+}
+```
+
+The service setup calls `AddVerificationServices()`, registers `AddVerificationRequestStore<ApplicationDbContext, int>()`, and registers the sample's `IVerificationSender<IdentityUser<int>, int>` implementation. In your own application, implement `IVerificationSender<TUser, TKey>` for your delivery provider (SMTP, email API, SMS, etc.) and register it in dependency injection. The MailKit implementation in this sample is an example, not a library integration.
+
+The registration flow is:
+
+1. `POST /api/register` creates a pending account and sends a code.
+2. `POST /api/register/verify` accepts the opaque verification handle and code, confirms the email, and issues the application token.
+3. `POST /api/register/resend` rotates the code while keeping the same handle.
+
+The sample uses SQLite because the verification store requires a relational provider; EF Core's InMemory provider does not support the transactional/atomic operations used by the verification store. In Development, `EnsureCreated` initializes the sample database directly from the model because this sample does not include migration files. `EnsureCreated` does not apply later schema changes; production applications should use EF Core migrations.
+
+The sample also maps `POST /api/admin/users` under the named `Admin` policy. The policy requires the `Administrator` role. The endpoint creates an already-confirmed account and returns the user DTO without issuing a token.
+
+Do not use the sample SMTP defaults in production. Configure TLS, secrets, persistent Data Protection keys, database migrations, and operational cleanup for expired verification records and send-history rows.

@@ -12,5 +12,12 @@ namespace RuntimeApps.Authentication.Model {
         /// <summary>Identifies the authenticated session, not a secret.</summary>
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public Guid? SessionId { get; set; }
+        /// <summary>True when external authentication succeeded but email verification is still required.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public bool VerificationRequired { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string VerificationHandle { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public DateTimeOffset? VerificationExpiresAt { get; set; }
     }
 }
