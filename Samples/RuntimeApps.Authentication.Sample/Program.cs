@@ -11,6 +11,7 @@ using RuntimeApps.Authentication.EF.Extensions;
 using RuntimeApps.Authentication.Extensions;
 using RuntimeApps.Authentication.Model;
 using RuntimeApps.Authentication.Sample;
+using RuntimeApps.Authentication.Interface;
 
 var builder = WebApplication.CreateBuilder(args);
 
