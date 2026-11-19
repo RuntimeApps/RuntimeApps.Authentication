@@ -28,10 +28,18 @@ namespace RuntimeApps.Authentication.Sample.Services {
             var message = new MimeMessage();
             message.From.Add(new MailboxAddress(_options.FromName, _options.FromAddress));
             message.To.Add(MailboxAddress.Parse(context.Destination));
-            message.Subject = $"{_options.ApplicationName} verification code";
+            var isPasswordReset = context.Purpose == VerificationPurpose.PasswordReset;
+            var isPasswordResetLink = isPasswordReset && context.PasswordResetMethod == ForgotPasswordMethod.Link;
+            message.Subject = isPasswordReset
+                ? $"{_options.ApplicationName} password reset"
+                : $"{_options.ApplicationName} verification code";
             message.Body = new TextPart("plain") {
-                Text = $"Your verification code is: {code}\n\n" +
-                       $"This code expires at {expiresAt:O}. If you did not request this code, you can ignore this message."
+                Text = isPasswordResetLink
+                    ? $"Use this link to reset your password: {context.VerificationUrl}\n\n" +
+                      $"This link expires at {expiresAt:O}. If you did not request a password reset, you can ignore this message."
+                    : $"{(isPasswordReset ? "Your password reset code" : "Your verification code")} is: {code}\n" +
+                      $"Verification handle: {context.VerificationHandle}\n\n" +
+                      $"This code expires at {expiresAt:O}. If you did not request this code, you can ignore this message."
             };
 
             using var client = new SmtpClient();
