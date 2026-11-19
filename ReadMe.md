@@ -233,17 +233,13 @@ builder.Services.AddVerificationRequestStore<ApplicationDbContext, int>();
 
 The DbContext must use a relational provider. Verification state changes and destination-level rate limits rely on atomic relational operations; EF InMemory is not supported. Add a migration after adding the verification entities.
 
-The optional `RuntimeApps.Authentication.MailKit` package provides an SMTP sender without adding MailKit to the core package:
+The library deliberately does not include an email/SMS delivery implementation. Each application must implement `IVerificationSender<TUser, TKey>` and register it in DI. The basic sample contains a MailKit SMTP implementation that you can use as a starting point:
 
 ```cs
-builder.Services.AddMailKitVerificationSender<IdentityUser<int>, int>(options => {
-    options.Host = configuration["Authentication:Verification:Smtp:Host"];
-    options.Port = 587;
-    options.SocketOptions = MailKit.Security.SecureSocketOptions.StartTls;
-    options.UserName = configuration["Authentication:Verification:Smtp:UserName"];
-    options.Password = configuration["Authentication:Verification:Smtp:Password"];
-    options.FromAddress = configuration["Authentication:Verification:Smtp:FromAddress"];
-});
+builder.Services.Configure<SmtpVerificationOptions>(
+    configuration.GetSection(SmtpVerificationOptions.SectionName));
+builder.Services.AddScoped<IVerificationSender<IdentityUser<int>, int>,
+    MailKitVerificationSender<IdentityUser<int>, int>>();
 ```
 
 Keep SMTP credentials in user secrets, environment variables, or a secret manager. Persist and share the ASP.NET Core Data Protection key ring across application instances.

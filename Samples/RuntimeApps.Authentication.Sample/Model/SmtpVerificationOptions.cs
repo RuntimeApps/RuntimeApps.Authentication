@@ -1,7 +1,7 @@
 using System.Net.Mail;
 using MailKit.Security;
 
-namespace RuntimeApps.Authentication.MailKit.Model {
+namespace RuntimeApps.Authentication.Sample.Model {
     public sealed class SmtpVerificationOptions {
         public const string SectionName = "Authentication:Verification:Smtp";
 

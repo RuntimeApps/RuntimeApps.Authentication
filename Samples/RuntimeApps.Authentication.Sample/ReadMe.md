@@ -103,7 +103,7 @@ app.MapGroup("api/account").MapAccountApi<IdentityUser, IdentityUserDto, string>
 
 ## Email verification
 
-The basic sample uses SQLite (a relational provider is required by the atomic verification store) and MailKit SMTP delivery. It defaults to a local SMTP development server at `localhost:1025` without TLS. Run Mailpit or configure SMTP through environment variables/user secrets before testing registration.
+The basic sample uses SQLite (a relational provider is required by the atomic verification store) and demonstrates an SMTP sender implemented with MailKit. MailKit is referenced only by this sample; the authentication library itself does not provide or require an email-delivery implementation. The sample defaults to a local SMTP development server at `localhost:1025` without TLS. Run Mailpit or configure SMTP through environment variables/user secrets before testing registration.
 
 The sample's DbContext includes the verification entities:
 
@@ -114,7 +114,7 @@ protected override void OnModelCreating(ModelBuilder modelBuilder) {
 }
 ```
 
-The service setup calls `AddVerificationServices()`, registers `AddVerificationRequestStore<ApplicationDbContext, int>()`, and adds the optional `AddMailKitVerificationSender<IdentityUser<int>, int>()`.
+The service setup calls `AddVerificationServices()`, registers `AddVerificationRequestStore<ApplicationDbContext, int>()`, and registers the sample's `IVerificationSender<IdentityUser<int>, int>` implementation. In your own application, implement `IVerificationSender<TUser, TKey>` for your delivery provider (SMTP, email API, SMS, etc.) and register it in dependency injection. The MailKit implementation in this sample is an example, not a library integration.
 
 The registration flow is:
 

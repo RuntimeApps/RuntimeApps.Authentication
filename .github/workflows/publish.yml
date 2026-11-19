@@ -10,7 +10,7 @@ on:
       - '*'
   pull_request:
     branches:
-      - '*'          # Run the workflow for all pull requests
+      - 'main'       # Run the workflow only for pull requests targeting main
 
 env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1

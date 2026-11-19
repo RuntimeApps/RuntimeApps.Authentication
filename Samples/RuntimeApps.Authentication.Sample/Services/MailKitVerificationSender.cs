@@ -2,10 +2,10 @@ using MailKit.Net.Smtp;
 using Microsoft.Extensions.Options;
 using MimeKit;
 using RuntimeApps.Authentication.Interface;
-using RuntimeApps.Authentication.MailKit.Model;
+using RuntimeApps.Authentication.Sample.Model;
 using RuntimeApps.Authentication.Model;
 
-namespace RuntimeApps.Authentication.MailKit.Service {
+namespace RuntimeApps.Authentication.Sample.Services {
     public sealed class MailKitVerificationSender<TUser, TKey> : IVerificationSender<TUser, TKey>
         where TKey : IEquatable<TKey> {
         private readonly SmtpVerificationOptions _options;

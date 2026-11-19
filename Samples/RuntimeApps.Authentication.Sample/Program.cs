@@ -3,8 +3,8 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using MailKit.Security;
-using RuntimeApps.Authentication.MailKit.Extensions;
+using RuntimeApps.Authentication.Sample.Services;
+using RuntimeApps.Authentication.Sample.Model;
 using Microsoft.IdentityModel.Tokens;
 using RuntimeApps.Authentication.Controller;
 using RuntimeApps.Authentication.EF.Extensions;
@@ -76,14 +76,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 
 builder.Services.AddVerificationRequestStore<ApplicationDbContext, int>();
-builder.Services.AddMailKitVerificationSender<IdentityUser<int>, int>(options => {
-    options.Host = builder.Configuration["Authentication:Verification:Smtp:Host"] ?? "localhost";
-    options.Port = builder.Configuration.GetValue("Authentication:Verification:Smtp:Port", 1025);
-    options.SocketOptions = builder.Configuration.GetValue("Authentication:Verification:Smtp:SocketOptions", SecureSocketOptions.None);
-    options.FromAddress = builder.Configuration["Authentication:Verification:Smtp:FromAddress"] ?? "noreply@example.com";
-    options.FromName = "RuntimeApps Authentication Sample";
-    options.ApplicationName = "RuntimeApps Authentication Sample";
-});
+builder.Services.Configure<SmtpVerificationOptions>(
+    builder.Configuration.GetSection(SmtpVerificationOptions.SectionName));
+builder.Services.AddScoped<IVerificationSender<IdentityUser<int>, int>,
+    MailKitVerificationSender<IdentityUser<int>, int>>();
 
 builder.Services.AddAuthorization(options => options.AddPolicy("Admin", policy => policy.RequireRole("Administrator")));
 
