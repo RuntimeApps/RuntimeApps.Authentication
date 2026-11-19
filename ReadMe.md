@@ -256,33 +256,9 @@ The API returns an opaque, cryptographically random verification handle. Only it
 
 Default limits are six numeric digits, ten-minute lifetime, five failed attempts, a 60-second resend cooldown, and five sends per destination/purpose/channel per hour. A successful verification is single-use. A resend rotates the code. The EF store uses relational transactions and conditional updates for concurrent operations.
 
-Repeating registration recovers a pending account if the client lost its handle. It does not replace the password on an existing pending account. The default updater changes only the username and phone number; implement `IUserRegistrationUpdater<TUser>` to allow other explicitly approved profile fields. Do not copy passwords, roles, claims, security stamps, lockout state, two-factor settings, or external logins from an unauthenticated repeat request.
+Repeating registration recovers an existing pending account if the client lost its handle. The existing account is reused unchanged: registration does not update its username, phone number, email, password, or any custom properties. If the user needs to change account information, provide a separate authenticated account-management flow or a dedicated recovery process.
 
-For a custom user model, explicitly allowlist the profile fields that may be updated when an unconfirmed account registers again. The default updater changes only `UserName` and `PhoneNumber`; it intentionally does not copy arbitrary properties. For example:
-
-```cs
-public sealed class AppUser : IdentityUser {
-    public string DisplayName { get; set; }
-}
-
-public sealed class AppUserRegistrationUpdater : IUserRegistrationUpdater<AppUser> {
-    public Task UpdatePendingUserAsync(
-        AppUser existingUser,
-        AppUser requestedUser,
-        CancellationToken cancellationToken = default) {
-        existingUser.UserName = requestedUser.UserName;
-        existingUser.PhoneNumber = requestedUser.PhoneNumber;
-        existingUser.PhoneNumberConfirmed = false;
-        existingUser.DisplayName = requestedUser.DisplayName;
-        return Task.CompletedTask;
-    }
-}
-
-// Register after AddVerificationServices so this replaces the default updater.
-builder.Services.AddScoped<IUserRegistrationUpdater<AppUser>, AppUserRegistrationUpdater>();
-```
-
-Do not copy passwords, roles, claims, security stamps, lockout state, two-factor settings, or external login associations from an unauthenticated repeat-registration request. Confirmed accounts are never modified or registered again; the API deliberately returns the same generic response to prevent account enumeration.
+Confirmed accounts are never modified or registered again; the API returns the same generic response to prevent account enumeration.
 
 ### Administrator provisioning
 

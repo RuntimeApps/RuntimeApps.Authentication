@@ -8,7 +8,6 @@ namespace RuntimeApps.Authentication.Service {
         where TUser : IdentityUser<TKey>, new()
         where TKey : IEquatable<TKey> {
         private readonly IUserManager<TUser> _userManager;
-        private readonly IUserRegistrationUpdater<TUser> _userUpdater;
         private readonly IVerificationWorkflowService<TUser, TKey> _verification;
         private readonly IUserAccountService<TUser> _accountService;
         private readonly VerificationOptions _options;
@@ -16,13 +15,11 @@ namespace RuntimeApps.Authentication.Service {
 
         public RegistrationService(
             IUserManager<TUser> userManager,
-            IUserRegistrationUpdater<TUser> userUpdater,
             IVerificationWorkflowService<TUser, TKey> verification,
             IUserAccountService<TUser> accountService,
             IOptions<VerificationOptions> options,
             TimeProvider timeProvider = null) {
             _userManager = userManager;
-            _userUpdater = userUpdater;
             _verification = verification;
             _accountService = accountService;
             _options = options.Value;
@@ -45,12 +42,7 @@ namespace RuntimeApps.Authentication.Service {
                 return GenericResponse();
 
             if(existingUser != null) {
-                var existingEmail = existingUser.Email;
-                await _userUpdater.UpdatePendingUserAsync(existingUser, user, cancellationToken);
-                existingUser.Email = existingEmail;
-                var updateResult = await _userManager.UpdateAsync(existingUser);
-                if(!updateResult.Succeeded)
-                    return new Result<RegistrationVerificationResponse>(ResultCode.BadRequest, updateResult.Errors);
+                // Reuse the existing pending account without changing any of its data or credentials.
                 user = existingUser;
             } else {
                 user.EmailConfirmed = false;
@@ -63,12 +55,7 @@ namespace RuntimeApps.Authentication.Service {
                     if(racedUser == null)
                         return new Result<RegistrationVerificationResponse>(ResultCode.BadRequest, createResult.Errors);
 
-                    var racedEmail = racedUser.Email;
-                    await _userUpdater.UpdatePendingUserAsync(racedUser, user, cancellationToken);
-                    racedUser.Email = racedEmail;
-                    var updateResult = await _userManager.UpdateAsync(racedUser);
-                    if(!updateResult.Succeeded)
-                        return new Result<RegistrationVerificationResponse>(ResultCode.BadRequest, updateResult.Errors);
+                    // Another request created this pending account first. Reuse it unchanged.
                     user = racedUser;
                 }
             }

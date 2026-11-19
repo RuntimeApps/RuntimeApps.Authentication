@@ -73,7 +73,6 @@ namespace RuntimeApps.Authentication {
             Services.TryAddScoped<IVerificationCodeGenerator<TUser, TKey>, RandomVerificationCodeGenerator<TUser, TKey>>();
             Services.TryAddScoped<IVerificationCodeVerifier<TKey>, DataProtectionVerificationCodeVerifier<TKey>>();
             Services.TryAddScoped<IVerificationWorkflowService<TUser, TKey>, VerificationWorkflowService<TUser, TKey>>();
-            Services.TryAddScoped<IUserRegistrationUpdater<TUser>, DefaultUserRegistrationUpdater<TUser, TKey>>();
             Services.TryAddScoped<IRegistrationService<TUser, TKey>, RegistrationService<TUser, TKey>>();
             return this;
         }
