@@ -27,6 +27,7 @@ namespace RuntimeApps.Authentication {
             Services.TryAddScoped<IExternalLoginEmailTrustPolicy<TUser>, DefaultExternalLoginEmailTrustPolicy<TUser>>();
 
             Services.AddHttpContextAccessor();
+            Services.AddHttpClient();
             // Identity services
             Services.TryAddScoped<IUserValidator<TUser>, UserValidator<TUser>>();
             Services.TryAddScoped<IPasswordValidator<TUser>, PasswordValidator<TUser>>();

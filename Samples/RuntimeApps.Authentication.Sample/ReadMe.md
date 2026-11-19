@@ -122,6 +122,8 @@ The registration flow is:
 2. `POST /api/register/verify` accepts the opaque verification handle and code, confirms the email, and issues the application token.
 3. `POST /api/register/resend` rotates the code while keeping the same handle.
 
+The sample uses SQLite because the verification store requires a relational provider; EF Core's InMemory provider does not support the transactional/atomic operations used by the verification store. In Development, `EnsureCreated` initializes the sample database directly from the model because this sample does not include migration files. `EnsureCreated` does not apply later schema changes; production applications should use EF Core migrations.
+
 The sample also maps `POST /api/admin/users` under the named `Admin` policy. The policy requires the `Administrator` role. The endpoint creates an already-confirmed account and returns the user DTO without issuing a token.
 
 Do not use the sample SMTP defaults in production. Configure TLS, secrets, persistent Data Protection keys, database migrations, and operational cleanup for expired verification records and send-history rows.

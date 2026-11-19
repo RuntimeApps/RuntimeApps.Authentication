@@ -231,7 +231,7 @@ modelBuilder.AddVerificationRequestEntity<int>();
 builder.Services.AddVerificationRequestStore<ApplicationDbContext, int>();
 ```
 
-The DbContext must use a relational provider. Verification state changes and destination-level rate limits rely on atomic relational operations; EF InMemory is not supported. Add a migration after adding the verification entities.
+The DbContext must use a relational provider. Verification state changes and destination-level rate limits rely on atomic relational operations; EF InMemory is not supported. Add a migration after adding the verification entities. The basic sample uses SQLite because it is relational and supports the required transactions and conditional updates.
 
 The library deliberately does not include an email/SMS delivery implementation. Each application must implement `IVerificationSender<TUser, TKey>` and register it in DI. The basic sample contains a MailKit SMTP implementation that you can use as a starting point:
 
@@ -242,7 +242,7 @@ builder.Services.AddScoped<IVerificationSender<IdentityUser<int>, int>,
     MailKitVerificationSender<IdentityUser<int>, int>>();
 ```
 
-Keep SMTP credentials in user secrets, environment variables, or a secret manager. Persist and share the ASP.NET Core Data Protection key ring across application instances.
+Keep SMTP credentials in user secrets, environment variables, or a secret manager. Persist and share the ASP.NET Core Data Protection key ring across application instances. The sample uses `EnsureCreated` only to create its local development database without checked-in migration files; `EnsureCreated` does not apply or update migrations. Production applications should create and apply EF Core migrations as part of deployment.
 
 ### Registration endpoints
 
@@ -256,7 +256,33 @@ The API returns an opaque, cryptographically random verification handle. Only it
 
 Default limits are six numeric digits, ten-minute lifetime, five failed attempts, a 60-second resend cooldown, and five sends per destination/purpose/channel per hour. A successful verification is single-use. A resend rotates the code. The EF store uses relational transactions and conditional updates for concurrent operations.
 
-Repeating registration recovers a pending account if the client lost its handle. It does not replace the password on an existing pending account. The default updater changes only the username and phone number; implement `IUserRegistrationUpdater<TUser>` to allow other safe profile fields. Do not copy passwords, roles, claims, security stamps, or external logins from an unauthenticated repeat request.
+Repeating registration recovers a pending account if the client lost its handle. It does not replace the password on an existing pending account. The default updater changes only the username and phone number; implement `IUserRegistrationUpdater<TUser>` to allow other explicitly approved profile fields. Do not copy passwords, roles, claims, security stamps, lockout state, two-factor settings, or external logins from an unauthenticated repeat request.
+
+For a custom user model, explicitly allowlist the profile fields that may be updated when an unconfirmed account registers again. The default updater changes only `UserName` and `PhoneNumber`; it intentionally does not copy arbitrary properties. For example:
+
+```cs
+public sealed class AppUser : IdentityUser {
+    public string DisplayName { get; set; }
+}
+
+public sealed class AppUserRegistrationUpdater : IUserRegistrationUpdater<AppUser> {
+    public Task UpdatePendingUserAsync(
+        AppUser existingUser,
+        AppUser requestedUser,
+        CancellationToken cancellationToken = default) {
+        existingUser.UserName = requestedUser.UserName;
+        existingUser.PhoneNumber = requestedUser.PhoneNumber;
+        existingUser.PhoneNumberConfirmed = false;
+        existingUser.DisplayName = requestedUser.DisplayName;
+        return Task.CompletedTask;
+    }
+}
+
+// Register after AddVerificationServices so this replaces the default updater.
+builder.Services.AddScoped<IUserRegistrationUpdater<AppUser>, AppUserRegistrationUpdater>();
+```
+
+Do not copy passwords, roles, claims, security stamps, lockout state, two-factor settings, or external login associations from an unauthenticated repeat-registration request. Confirmed accounts are never modified or registered again; the API deliberately returns the same generic response to prevent account enumeration.
 
 ### Administrator provisioning
 

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using RuntimeApps.Authentication.Interface;
 using RuntimeApps.Authentication.Model;
@@ -11,9 +12,16 @@ namespace RuntimeApps.Authentication.Service.ExternalLoginProviders {
     public class FacebookExternalLoginProvider<TUser> : IExternalLoginProvider<TUser>
         where TUser : class, new() {
         private readonly IOptions<FacebookExternalLoginOption<TUser>> _options;
+        private readonly IHttpClientFactory _httpClientFactory;
+        private readonly ILogger<FacebookExternalLoginProvider<TUser>> _logger;
 
-        public FacebookExternalLoginProvider(IOptions<FacebookExternalLoginOption<TUser>> options) {
-            _options = options;
+        public FacebookExternalLoginProvider(
+            IOptions<FacebookExternalLoginOption<TUser>> options,
+            IHttpClientFactory httpClientFactory,
+            ILogger<FacebookExternalLoginProvider<TUser>> logger) {
+            _options = options ?? throw new ArgumentNullException(nameof(options));
+            _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
         public string Provider => "FACEBOOK";
@@ -29,7 +37,7 @@ namespace RuntimeApps.Authentication.Service.ExternalLoginProviders {
                 return null;
 
             try {
-                using var client = new HttpClient();
+                using var client = _httpClientFactory.CreateClient(nameof(FacebookExternalLoginProvider<TUser>));
                 var appTokenUrl = string.Format(CultureInfo.InvariantCulture, option.AccessTokenUrl,
                     Uri.EscapeDataString(option.ClientId), Uri.EscapeDataString(option.ClientSecret));
                 var appTokenResponse = await client.GetStringAsync(appTokenUrl);
@@ -64,11 +72,22 @@ namespace RuntimeApps.Authentication.Service.ExternalLoginProviders {
                     // Facebook's current response model does not provide a trustworthy email-verified assertion.
                     EmailVerified = false
                 };
-            } catch(HttpRequestException) {
+            } catch(HttpRequestException exception) {
+                // Do not log request URLs: Facebook access tokens are sent in query parameters.
+                _logger.LogWarning(
+                    "Facebook token validation request failed. Status code: {StatusCode}.",
+                    exception.StatusCode);
                 return null;
-            } catch(JsonException) {
+            } catch(JsonException exception) {
+                _logger.LogWarning("Facebook returned an invalid response: {Reason}", exception.Message);
                 return null;
-            } catch(FormatException) {
+            } catch(FormatException exception) {
+                _logger.LogWarning("Facebook token validation response contained an invalid value: {Reason}", exception.Message);
+                return null;
+            } catch(Exception exception) {
+                _logger.LogError(
+                    "Unexpected Facebook external login validation failure. Exception type: {ExceptionType}.",
+                    exception.GetType().FullName);
                 return null;
             }
         }

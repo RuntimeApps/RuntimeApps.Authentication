@@ -1,6 +1,7 @@
 using Google.Apis.Auth;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
 using RuntimeApps.Authentication.Interface;
 using RuntimeApps.Authentication.Model;
 
@@ -8,9 +9,13 @@ namespace RuntimeApps.Authentication.Service.ExternalLoginProviders {
     public class GoogleExternalLoginProvider<TUser> : IExternalLoginProvider<TUser>
         where TUser : class, new() {
         private readonly IOptions<GoogleExternalLoginOption<TUser>> _options;
+        private readonly ILogger<GoogleExternalLoginProvider<TUser>> _logger;
 
-        public GoogleExternalLoginProvider(IOptions<GoogleExternalLoginOption<TUser>> options) {
-            _options = options;
+        public GoogleExternalLoginProvider(
+            IOptions<GoogleExternalLoginOption<TUser>> options,
+            ILogger<GoogleExternalLoginProvider<TUser>> logger) {
+            _options = options ?? throw new ArgumentNullException(nameof(options));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
         public string Provider => "GOOGLE";
@@ -40,8 +45,12 @@ namespace RuntimeApps.Authentication.Service.ExternalLoginProviders {
                     EmailVerified = payload.EmailVerified,
                     HostedDomain = payload.HostedDomain
                 };
-            } catch(Exception) {
-                // Provider validation exceptions may contain token-related details; never log them.
+            } catch(Exception exception) {
+                // Log the validation reason, but never log the supplied identity token.
+                _logger.LogWarning(
+                    "Google external token validation failed. {ExceptionType}: {Reason}",
+                    exception.GetType().FullName,
+                    exception.Message);
                 return null;
             }
         }

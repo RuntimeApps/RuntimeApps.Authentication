@@ -39,6 +39,8 @@ namespace RuntimeApps.Authentication.Service {
                 user.UserName = user.Email;
 
             var existingUser = await _userManager.FindByEmailAsync(user.Email);
+            // Do not create or modify confirmed accounts. Keep the response indistinguishable
+            // from a pending registration to avoid exposing whether an email is registered.
             if(existingUser?.EmailConfirmed == true)
                 return GenericResponse();
 

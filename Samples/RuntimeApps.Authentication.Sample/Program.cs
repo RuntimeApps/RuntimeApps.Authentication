@@ -101,10 +101,12 @@ if(app.Environment.IsDevelopment()) {
         var services = scope.ServiceProvider;
         try {
             var context = services.GetRequiredService<ApplicationDbContext>();
+            // The sample has no checked-in migrations. EnsureCreated creates its demo schema
+            // directly from the EF model; real applications should use EF Core migrations.
             context.Database.EnsureCreated();
         } catch(Exception ex) {
             var logger = services.GetRequiredService<ILogger<Program>>();
-            logger.LogError(ex, "An error occurred while seeding the database.");
+            logger.LogError(ex, "An error occurred while initializing the sample database.");
         }
     }
 
