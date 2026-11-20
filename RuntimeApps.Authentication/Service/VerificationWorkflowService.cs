@@ -211,18 +211,21 @@ namespace RuntimeApps.Authentication.Service {
 
         private VerificationCodeContext<TUser, TKey> CreateContext(
             TUser user, VerificationRequest<TKey> request, string handle, string credential) {
-            string verificationUrl = null;
-            if(request.Purpose == VerificationPurpose.PasswordReset && _forgotOptions.Method == ForgotPasswordMethod.Link) {
-                var builder = new UriBuilder(_forgotOptions.FrontendResetUrl);
-                builder.Fragment = $"handle={Uri.EscapeDataString(handle)}&token={Uri.EscapeDataString(credential)}";
-                verificationUrl = builder.Uri.ToString();
-            }
             return new VerificationCodeContext<TUser, TKey> {
                 User = user, UserId = user.Id, RequestId = request.Id, Purpose = request.Purpose,
                 Channel = request.Channel, CustomPurpose = request.CustomPurpose, CustomChannel = request.CustomChannel,
-                Destination = request.Destination, VerificationHandle = handle,
-                PasswordResetMethod = request.Purpose == VerificationPurpose.PasswordReset ? _forgotOptions.Method : null,
-                VerificationUrl = verificationUrl
+                Destination = request.Destination,
+                VerificationHandle = request.Purpose == VerificationPurpose.PasswordReset &&
+                                     _forgotOptions.Method == ForgotPasswordMethod.Link ? handle : null,
+                TokenGeneratorType = request.Purpose == VerificationPurpose.PasswordReset
+                    ? (_forgotOptions.Method == ForgotPasswordMethod.Link
+                        ? VerificationTokenGeneratorType.Link
+                        : VerificationTokenGeneratorType.Code)
+                    : null,
+                FrontendResetUrl = request.Purpose == VerificationPurpose.PasswordReset &&
+                                   _forgotOptions.Method == ForgotPasswordMethod.Link
+                    ? _forgotOptions.FrontendResetUrl
+                    : null
             };
         }
 
