@@ -2,10 +2,19 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using RuntimeApps.Authentication.EF.Extensions;
-using RuntimeApps.Authentication.EF.Store;
-using RuntimeApps.Authentication.Model;
-
+using RuntimeApps.Authentication.EF.Features.RefreshTokens.Configurations;
+using RuntimeApps.Authentication.EF.Features.Verification.Configurations;
+using RuntimeApps.Authentication.EF.DependencyInjection;
+using RuntimeApps.Authentication.EF.Features.RefreshTokens.Stores;
+using RuntimeApps.Authentication.EF.Features.Verification.Stores;
+using RuntimeApps.Authentication.Features.Account.Models;
+using RuntimeApps.Authentication.Features.ExternalLogin.Models;
+using RuntimeApps.Authentication.Features.PasswordRecovery.Models;
+using RuntimeApps.Authentication.Features.RefreshTokens.Models;
+using RuntimeApps.Authentication.Features.Registration.Models;
+using RuntimeApps.Authentication.Features.Verification.Models;
+using RuntimeApps.Authentication.Identity.Models;
+using RuntimeApps.Authentication.Shared.Models;
 namespace RuntimeApps.Authentication.Test {
     public class EfVerificationRequestStoreTest {
         [Fact]

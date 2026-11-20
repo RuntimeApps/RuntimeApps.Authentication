@@ -2,8 +2,16 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using RuntimeApps.Authentication.Extensions;
-using RuntimeApps.Authentication.Model;
+using RuntimeApps.Authentication.DependencyInjection;
+using RuntimeApps.Authentication.Shared.Extensions;
+using RuntimeApps.Authentication.Features.Account.Models;
+using RuntimeApps.Authentication.Features.ExternalLogin.Models;
+using RuntimeApps.Authentication.Features.PasswordRecovery.Models;
+using RuntimeApps.Authentication.Features.RefreshTokens.Models;
+using RuntimeApps.Authentication.Features.Registration.Models;
+using RuntimeApps.Authentication.Features.Verification.Models;
+using RuntimeApps.Authentication.Identity.Models;
+using RuntimeApps.Authentication.Shared.Models;
 using Xunit;
 
 namespace RuntimeApps.Authentication.Test {
