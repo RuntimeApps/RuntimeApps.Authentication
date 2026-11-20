@@ -115,7 +115,12 @@ namespace RuntimeApps.Authentication.Test {
                 Array.Empty<IPasswordValidator<IdentityUser>>(),
                 new ServiceCollection().BuildServiceProvider(),
                 NullLogger<ForgotPasswordService<IdentityUser, string>>.Instance,
-                Options.Create(new ForgotPasswordOptions { Method = method }));
+                Options.Create(new ForgotPasswordOptions {
+                    Method = method,
+                    FrontendResetUrl = method == ForgotPasswordMethod.Link
+                        ? "https://frontend.example.com/reset-password"
+                        : null
+                }));
         }
     }
 }
