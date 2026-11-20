@@ -79,7 +79,11 @@ jobs:
           name: nuget
           path: ${{ env.NuGetDirectory }}
 
-      # No .NET SDK is needed to publish already packed NuGet artifacts.
+      # Install .NET SDK for the dotnet NuGet CLI.
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 11.0.x
 
       # Exchange the OIDC token for a short-lived NuGet API key
       - name: NuGet login (OIDC)
