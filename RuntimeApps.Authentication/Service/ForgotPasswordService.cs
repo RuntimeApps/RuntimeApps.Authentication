@@ -47,7 +47,7 @@ namespace RuntimeApps.Authentication.Service {
                 var operation = await _verification.StartAsync(
                     user, VerificationPurpose.PasswordReset, VerificationChannel.Email, user.Email,
                     cancellationToken: cancellationToken);
-                if(operation.Succeeded)
+                if(operation.Succeeded && _options.Method == ForgotPasswordMethod.VerificationCode)
                     return new ForgotPasswordResponse {
                         VerificationHandle = operation.VerificationHandle
                     };
@@ -116,7 +116,9 @@ namespace RuntimeApps.Authentication.Service {
         }
 
         private ForgotPasswordResponse CreateGenericResponse() => new() {
-            VerificationHandle = VerificationHandle.Create()
+            VerificationHandle = _options.Method == ForgotPasswordMethod.VerificationCode
+                ? VerificationHandle.Create()
+                : null
         };
 
         private static Result Failure(string code, string description) =>
