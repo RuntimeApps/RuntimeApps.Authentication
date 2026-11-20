@@ -10,10 +10,4 @@
     <ProjectReference Include="..\..\RuntimeApps.Authentication\RuntimeApps.Authentication.csproj" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
-  </ItemGroup>
-
-  <ItemGroup Condition="'$(TargetFramework)' == 'net11.0'">
-  </ItemGroup>
-
 </Project>
