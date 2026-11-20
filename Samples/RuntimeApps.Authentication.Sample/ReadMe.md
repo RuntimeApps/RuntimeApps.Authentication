@@ -156,4 +156,4 @@ app.MapGroup("api")
     .MapForgotPasswordApi<IdentityUser<int>, int>();
 \`\`\`
 
-The frontend receives the reset handle and token in the URL fragment, removes them from the address bar immediately, and submits them with the new password to \`POST /api/reset-password\`. Loading the frontend link does not consume the credential. The sample email sender includes the code and handle, or the reset link, according to the configured mode.
+The frontend receives the reset handle and token in the URL fragment, removes them from the address bar immediately, and submits them with the new password to \`POST /api/reset-password\`. Loading the frontend link does not consume the credential. In code mode, the API response supplies the handle and the email supplies the code. In link mode, the sender uses `context.CreateVerificationUrl(token)` to create the frontend reset link; no handle is returned in the API response.
