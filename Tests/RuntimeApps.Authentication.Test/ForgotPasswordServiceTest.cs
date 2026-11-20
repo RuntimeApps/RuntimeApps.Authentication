@@ -69,9 +69,33 @@ namespace RuntimeApps.Authentication.Test {
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         }
 
+        [Fact]
+        public async Task Request_ConfirmedEmailInLinkMode_DoesNotReturnVerificationHandle() {
+            var userManager = new Mock<IUserManager<IdentityUser>>();
+            var workflow = new Mock<IForgotPasswordVerificationWorkflow<IdentityUser, string>>();
+            var user = new IdentityUser {
+                Email = "person@example.com",
+                EmailConfirmed = true
+            };
+            userManager.Setup(manager => manager.FindByEmailAsync(user.Email)).ReturnsAsync(user);
+            workflow.Setup(service => service.StartAsync(
+                    user, VerificationPurpose.PasswordReset, VerificationChannel.Email, user.Email,
+                    null, null, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(VerificationOperationResult.Success("real-handle", DateTimeOffset.UtcNow.AddMinutes(10)));
+
+            var service = CreateService(userManager, workflow, ForgotPasswordMethod.Link);
+            var response = await service.RequestAsync(user.Email);
+
+            Assert.Null(response.VerificationHandle);
+            workflow.Verify(service => service.StartAsync(
+                user, VerificationPurpose.PasswordReset, VerificationChannel.Email, user.Email,
+                null, null, It.IsAny<CancellationToken>()), Times.Once);
+        }
+
         private static ForgotPasswordService<IdentityUser, string> CreateService(
             Mock<IUserManager<IdentityUser>> userManager,
-            Mock<IForgotPasswordVerificationWorkflow<IdentityUser, string>> workflow) {
+            Mock<IForgotPasswordVerificationWorkflow<IdentityUser, string>> workflow,
+            ForgotPasswordMethod method = ForgotPasswordMethod.VerificationCode) {
             var store = new Mock<IUserStore<IdentityUser>>();
             var identityManager = new UserManager<IdentityUser>(
                 store.Object,
@@ -91,7 +115,7 @@ namespace RuntimeApps.Authentication.Test {
                 Array.Empty<IPasswordValidator<IdentityUser>>(),
                 new ServiceCollection().BuildServiceProvider(),
                 NullLogger<ForgotPasswordService<IdentityUser, string>>.Instance,
-                Options.Create(new ForgotPasswordOptions()));
+                Options.Create(new ForgotPasswordOptions { Method = method }));
         }
     }
 }
