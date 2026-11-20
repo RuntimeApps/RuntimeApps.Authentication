@@ -127,3 +127,33 @@ The sample uses SQLite because the verification store requires a relational prov
 The sample also maps `POST /api/admin/users` under the named `Admin` policy. The policy requires the `Administrator` role. The endpoint creates an already-confirmed account and returns the user DTO without issuing a token.
 
 Do not use the sample SMTP defaults in production. Configure TLS, secrets, persistent Data Protection keys, database migrations, and operational cleanup for expired verification records and send-history rows.
+
+
+## Forgot password
+
+The basic sample explicitly enables and maps the optional forgot-password API. It defaults to numeric verification codes:
+
+\`\`\`cs
+.AddVerificationServices()
+.AddForgotPassword(options => {
+    options.Method = ForgotPasswordMethod.VerificationCode;
+})
+\`\`\`
+
+To use frontend-hosted reset links instead, configure an HTTPS frontend page:
+
+\`\`\`cs
+.AddForgotPassword(options => {
+    options.Method = ForgotPasswordMethod.Link;
+    options.FrontendResetUrl = "https://frontend.example.com/reset-password";
+})
+\`\`\`
+
+The endpoint is mapped separately from the other authentication endpoints:
+
+\`\`\`cs
+app.MapGroup("api")
+    .MapForgotPasswordApi<IdentityUser<int>, int>();
+\`\`\`
+
+The frontend receives the reset handle and token in the URL fragment, removes them from the address bar immediately, and submits them with the new password to \`POST /api/reset-password\`. Loading the frontend link does not consume the credential. In code mode, the API response supplies the handle and the email supplies the code. In link mode, the sender uses `context.CreateVerificationUrl(token)` to create the frontend reset link; no handle is returned in the API response.

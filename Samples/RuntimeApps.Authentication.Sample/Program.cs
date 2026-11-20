@@ -29,6 +29,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         options.MaximumSendsPerHour = 5;
         options.RequireEmailVerificationForExternalLogins = false;
     })
+    .AddForgotPassword(options => {
+        // Choose Link and configure FrontendResetUrl to enable frontend-hosted reset links.
+        options.Method = ForgotPasswordMethod.VerificationCode;
+    })
     //Add implemetation of entity framework core user stores.
     .AddEfStores<ApplicationDbContext, IdentityUser<int>, IdentityRole<int>, int>()
     // Add default mapper between IdentityUser and IdentityUserDto
@@ -122,7 +126,8 @@ app.UseAuthorization();
 app.MapGroup("api")
     .WithTags("Authentication APIs")
     .MapLoginApi<IdentityUser<int>, IdentityUserDto<int>, int>()
-    .MapRegisterApi<IdentityUser<int>, IdentityUserDto<int>, int>();
+    .MapRegisterApi<IdentityUser<int>, IdentityUserDto<int>, int>()
+    .MapForgotPasswordApi<IdentityUser<int>, int>();
 
 app.MapGroup("api")
     .WithTags("Administrator APIs")

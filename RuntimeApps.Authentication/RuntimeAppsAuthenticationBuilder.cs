@@ -58,6 +58,7 @@ namespace RuntimeApps.Authentication {
         public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddVerificationServices(
             Action<VerificationOptions> configureOptions = null) {
             Services.AddDataProtection();
+            Services.AddOptions<ForgotPasswordOptions>();
             Services.AddOptions<VerificationOptions>()
                 .Configure(options => configureOptions?.Invoke(options))
                 .Validate(options => options.CodeLength is >= 4 and <= 12 &&
@@ -73,7 +74,34 @@ namespace RuntimeApps.Authentication {
             Services.TryAddScoped<IVerificationCodeGenerator<TUser, TKey>, RandomVerificationCodeGenerator<TUser, TKey>>();
             Services.TryAddScoped<IVerificationCodeVerifier<TKey>, DataProtectionVerificationCodeVerifier<TKey>>();
             Services.TryAddScoped<IVerificationWorkflowService<TUser, TKey>, VerificationWorkflowService<TUser, TKey>>();
+            Services.TryAddScoped<IForgotPasswordVerificationWorkflow<TUser, TKey>, VerificationWorkflowService<TUser, TKey>>();
             Services.TryAddScoped<IRegistrationService<TUser, TKey>, RegistrationService<TUser, TKey>>();
+            return this;
+        }
+
+
+        /// <summary>
+        /// Registers the optional forgot-password workflow. Map its endpoints separately with
+        /// MapForgotPasswordApi; they are never added implicitly by other endpoint mappings.
+        /// </summary>
+        public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddForgotPassword(
+            Action<ForgotPasswordOptions> configureOptions = null) {
+            Services.AddOptions<ForgotPasswordOptions>()
+                .Configure(options => configureOptions?.Invoke(options))
+                .Validate(options => {
+                    try { options.Validate(); return true; }
+                    catch(InvalidOperationException) { return false; }
+                }, "Forgot-password options are invalid.")
+                .ValidateOnStart();
+            // Password-reset operations use ASP.NET Core Identity's token provider. Register
+            // the standard Data Protection provider when the application has not supplied one.
+            Services.TryAddTransient<DataProtectorTokenProvider<TUser>>();
+            Services.Configure<IdentityOptions>(options => {
+                options.Tokens.ProviderMap.TryAdd(
+                    TokenOptions.DefaultProvider,
+                    new TokenProviderDescriptor(typeof(DataProtectorTokenProvider<TUser>)));
+            });
+            Services.TryAddScoped<IForgotPasswordService<TUser, TKey>, ForgotPasswordService<TUser, TKey>>();
             return this;
         }
 
