@@ -28,6 +28,8 @@ Protect personal data | Protect personal user data in database by encrypt user d
 
 ## Getting Started
 
+`IUserManager<TUser>` provides user lookup, create, update, delete, and principal lookup operations. For services that need specific capabilities, inject focused contracts such as `IUserPasswordManager<TUser>`, `IUserEmailManager<TUser>`, `IUserRoleManager<TUser>`, or `IUserClaimManager<TUser>`. `AddRuntimeAppsAuthentication<TUser, TRole, TKey>()` registers these contracts to the same scoped `RuntimeAppsUserManager<TUser>` instance. The concrete manager remains customizable: derive from `RuntimeAppsUserManager<TUser>` and register it with `.AddUserManager<YourUserManager>()` after calling `AddRuntimeAppsAuthentication`. A manager registered directly as `UserManager<TUser>` before the builder must also derive from `RuntimeAppsUserManager<TUser>` to share the focused interfaces.
+
 To use this library do the steps:
 
 ### Install packages:

@@ -16,6 +16,7 @@ namespace RuntimeApps.Authentication.Features.Verification.Services {
         private readonly IVerificationCodeVerifier<TKey> _verifier;
         private readonly IVerificationSender<TUser, TKey> _sender;
         private readonly IUserManager<TUser> _userManager;
+        private readonly IUserPasswordManager<TUser> _passwordManager;
         private readonly ILookupNormalizer _normalizer;
         private readonly VerificationOptions _options;
         private readonly ForgotPasswordOptions _forgotOptions;
@@ -28,10 +29,11 @@ namespace RuntimeApps.Authentication.Features.Verification.Services {
             IVerificationCodeVerifier<TKey> verifier,
             IVerificationSender<TUser, TKey> sender,
             IUserManager<TUser> userManager,
+            IUserPasswordManager<TUser> passwordManager,
             ILookupNormalizer normalizer,
             IOptions<VerificationOptions> options,
             TimeProvider timeProvider = null)
-            : this(store, generator, verifier, sender, userManager, normalizer, options,
+            : this(store, generator, verifier, sender, userManager, passwordManager, normalizer, options,
                 Options.Create(new ForgotPasswordOptions()), timeProvider) {
         }
 
@@ -41,6 +43,7 @@ namespace RuntimeApps.Authentication.Features.Verification.Services {
             IVerificationCodeVerifier<TKey> verifier,
             IVerificationSender<TUser, TKey> sender,
             IUserManager<TUser> userManager,
+            IUserPasswordManager<TUser> passwordManager,
             ILookupNormalizer normalizer,
             IOptions<VerificationOptions> options,
             IOptions<ForgotPasswordOptions> forgotOptions,
@@ -50,6 +53,7 @@ namespace RuntimeApps.Authentication.Features.Verification.Services {
             _verifier = verifier ?? throw new ArgumentNullException(nameof(verifier));
             _sender = sender ?? throw new ArgumentNullException(nameof(sender));
             _userManager = userManager ?? throw new ArgumentNullException(nameof(userManager));
+            _passwordManager = passwordManager ?? throw new ArgumentNullException(nameof(passwordManager));
             _normalizer = normalizer ?? throw new ArgumentNullException(nameof(normalizer));
             _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
             _forgotOptions = forgotOptions?.Value ?? throw new ArgumentNullException(nameof(forgotOptions));
@@ -195,7 +199,7 @@ namespace RuntimeApps.Authentication.Features.Verification.Services {
         private async Task<string> CreateCredentialAsync(
             TUser user, VerificationRequest<TKey> request, string handle, CancellationToken cancellationToken) {
             if(request.Purpose == VerificationPurpose.PasswordReset && _forgotOptions.Method == ForgotPasswordMethod.Link)
-                return await _userManager.GeneratePasswordResetTokenAsync(user);
+                return await _passwordManager.GeneratePasswordResetTokenAsync(user);
             return await _generator.GenerateAsync(
                 CreateContext(user, request, handle, null), _options, cancellationToken);
         }

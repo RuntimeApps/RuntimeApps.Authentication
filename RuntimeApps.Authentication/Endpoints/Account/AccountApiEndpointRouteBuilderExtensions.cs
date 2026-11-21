@@ -177,12 +177,12 @@ namespace RuntimeApps.Authentication.Endpoints.Account {
                 return user != null ? mapper.ToDto(user) : null;
             });
 
-            authorizedRouteGroup.MapPost("password/change", async Task<Results<Ok, ValidationProblem>> ([FromBody] ChangePasswordModel input, IUserManager<TUser> userManager, HttpContext httpContext, IServiceProvider services) => {
+            authorizedRouteGroup.MapPost("password/change", async Task<Results<Ok, ValidationProblem>> ([FromBody] ChangePasswordModel input, IUserManager<TUser> userManager, IUserPasswordManager<TUser> passwordManager, HttpContext httpContext, IServiceProvider services) => {
                 var user = await userManager.GetUserAsync(httpContext.User);
                 if(user == null)
                     return ValidationProblemFactory.CreateValidationProblem("NoAccess", "Cannot change password without login");
 
-                var result = await userManager.ChangePasswordAsync(user, input.CurrentPassword, input.NewPassword);
+                var result = await passwordManager.ChangePasswordAsync(user, input.CurrentPassword, input.NewPassword);
                 if(!result.Succeeded)
                     return result.CreateValidationProblem();
 
@@ -193,12 +193,12 @@ namespace RuntimeApps.Authentication.Endpoints.Account {
                 return TypedResults.Ok();
             });
 
-            authorizedRouteGroup.MapPost("password", async Task<Results<Ok, ValidationProblem>> ([FromBody] string password, IUserManager<TUser> userManager, HttpContext httpContext, IServiceProvider services) => {
+            authorizedRouteGroup.MapPost("password", async Task<Results<Ok, ValidationProblem>> ([FromBody] string password, IUserManager<TUser> userManager, IUserPasswordManager<TUser> passwordManager, HttpContext httpContext, IServiceProvider services) => {
                 var user = await userManager.GetUserAsync(httpContext.User);
                 if(user == null)
                     return ValidationProblemFactory.CreateValidationProblem("NoAccess", "Cannot change password without login");
 
-                var result = await userManager.AddPasswordAsync(user, password);
+                var result = await passwordManager.AddPasswordAsync(user, password);
                 if(!result.Succeeded)
                     return result.CreateValidationProblem();
 

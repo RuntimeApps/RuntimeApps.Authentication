@@ -32,12 +32,12 @@ namespace RuntimeApps.Authentication.Test {
     public class ForgotPasswordServiceTest {
         [Fact]
         public async Task Request_UnknownEmail_ReturnsGenericResponseWithNonexistentHandle() {
-            var userManager = new Mock<IUserManager<IdentityUser>>();
+            var emailManager = new Mock<IUserEmailManager<IdentityUser>>();
             var workflow = new Mock<IForgotPasswordVerificationWorkflow<IdentityUser, string>>();
-            userManager.Setup(manager => manager.FindByEmailAsync("missing@example.com"))
+            emailManager.Setup(manager => manager.FindByEmailAsync("missing@example.com"))
                 .ReturnsAsync((IdentityUser)null);
 
-            var service = CreateService(userManager, workflow);
+            var service = CreateService(emailManager, workflow);
             var response = await service.RequestAsync("missing@example.com");
 
             Assert.False(string.IsNullOrWhiteSpace(response.VerificationHandle));
@@ -49,19 +49,19 @@ namespace RuntimeApps.Authentication.Test {
 
         [Fact]
         public async Task Request_ConfirmedEmail_ReturnsStartedVerificationHandle() {
-            var userManager = new Mock<IUserManager<IdentityUser>>();
+            var emailManager = new Mock<IUserEmailManager<IdentityUser>>();
             var workflow = new Mock<IForgotPasswordVerificationWorkflow<IdentityUser, string>>();
             var user = new IdentityUser {
                 Email = "person@example.com",
                 EmailConfirmed = true
             };
-            userManager.Setup(manager => manager.FindByEmailAsync(user.Email)).ReturnsAsync(user);
+            emailManager.Setup(manager => manager.FindByEmailAsync(user.Email)).ReturnsAsync(user);
             workflow.Setup(service => service.StartAsync(
                     user, VerificationPurpose.PasswordReset, VerificationChannel.Email, user.Email,
                     null, null, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(VerificationOperationResult.Success("real-handle", DateTimeOffset.UtcNow.AddMinutes(10)));
 
-            var service = CreateService(userManager, workflow);
+            var service = CreateService(emailManager, workflow);
             var response = await service.RequestAsync(user.Email);
 
             Assert.Equal("real-handle", response.VerificationHandle);
@@ -72,15 +72,15 @@ namespace RuntimeApps.Authentication.Test {
 
         [Fact]
         public async Task Request_UnconfirmedEmail_DoesNotStartVerification() {
-            var userManager = new Mock<IUserManager<IdentityUser>>();
+            var emailManager = new Mock<IUserEmailManager<IdentityUser>>();
             var workflow = new Mock<IForgotPasswordVerificationWorkflow<IdentityUser, string>>();
             var user = new IdentityUser {
                 Email = "unconfirmed@example.com",
                 EmailConfirmed = false
             };
-            userManager.Setup(manager => manager.FindByEmailAsync(user.Email)).ReturnsAsync(user);
+            emailManager.Setup(manager => manager.FindByEmailAsync(user.Email)).ReturnsAsync(user);
 
-            var service = CreateService(userManager, workflow);
+            var service = CreateService(emailManager, workflow);
             var response = await service.RequestAsync(user.Email);
 
             Assert.False(string.IsNullOrWhiteSpace(response.VerificationHandle));
@@ -91,19 +91,19 @@ namespace RuntimeApps.Authentication.Test {
 
         [Fact]
         public async Task Request_ConfirmedEmailInLinkMode_DoesNotReturnVerificationHandle() {
-            var userManager = new Mock<IUserManager<IdentityUser>>();
+            var emailManager = new Mock<IUserEmailManager<IdentityUser>>();
             var workflow = new Mock<IForgotPasswordVerificationWorkflow<IdentityUser, string>>();
             var user = new IdentityUser {
                 Email = "person@example.com",
                 EmailConfirmed = true
             };
-            userManager.Setup(manager => manager.FindByEmailAsync(user.Email)).ReturnsAsync(user);
+            emailManager.Setup(manager => manager.FindByEmailAsync(user.Email)).ReturnsAsync(user);
             workflow.Setup(service => service.StartAsync(
                     user, VerificationPurpose.PasswordReset, VerificationChannel.Email, user.Email,
                     null, null, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(VerificationOperationResult.Success("real-handle", DateTimeOffset.UtcNow.AddMinutes(10)));
 
-            var service = CreateService(userManager, workflow, ForgotPasswordMethod.Link);
+            var service = CreateService(emailManager, workflow, ForgotPasswordMethod.Link);
             var response = await service.RequestAsync(user.Email);
 
             Assert.Null(response.VerificationHandle);
@@ -113,7 +113,7 @@ namespace RuntimeApps.Authentication.Test {
         }
 
         private static ForgotPasswordService<IdentityUser, string> CreateService(
-            Mock<IUserManager<IdentityUser>> userManager,
+            Mock<IUserEmailManager<IdentityUser>> emailManager,
             Mock<IForgotPasswordVerificationWorkflow<IdentityUser, string>> workflow,
             ForgotPasswordMethod method = ForgotPasswordMethod.VerificationCode) {
             var store = new Mock<IUserStore<IdentityUser>>();
@@ -129,7 +129,8 @@ namespace RuntimeApps.Authentication.Test {
                 NullLogger<UserManager<IdentityUser>>.Instance);
 
             return new ForgotPasswordService<IdentityUser, string>(
-                userManager.Object,
+                emailManager.Object,
+                Mock.Of<IUserPasswordManager<IdentityUser>>(),
                 identityManager,
                 workflow.Object,
                 Array.Empty<IPasswordValidator<IdentityUser>>(),

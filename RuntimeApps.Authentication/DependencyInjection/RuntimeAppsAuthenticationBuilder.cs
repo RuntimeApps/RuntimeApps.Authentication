@@ -36,8 +36,9 @@ namespace RuntimeApps.Authentication.DependencyInjection {
             Services.TryAddScoped<ITwoFactorSecurityStampValidator, TwoFactorSecurityStampValidator<TUser>>();
             Services.TryAddScoped<IUserClaimsPrincipalFactory<TUser>, UserClaimsPrincipalFactory<TUser, TRole>>();
             Services.TryAddScoped<IUserConfirmation<TUser>, DefaultUserConfirmation<TUser>>();
-            Services.TryAddScoped<UserManager<TUser>>();
-            Services.TryAddScoped<IUserManager<TUser>, RuntimeAppsUserManager<TUser>>();
+            AddUserManagerRegistration();
+            Services.TryAddScoped<IUserManager<TUser>>(sp => sp.GetRequiredService<RuntimeAppsUserManager<TUser>>());
+            AddUserManagerInterfaces();
             Services.TryAddScoped<SignInManager<TUser>>();
             Services.TryAddScoped<ISignInManager<TUser>, RuntimeAppsSignInManager<TUser>>();
             Services.TryAddScoped<RoleManager<TRole>>();
@@ -50,6 +51,44 @@ namespace RuntimeApps.Authentication.DependencyInjection {
             where TUserDto : class where TMapper : class, IUserMapper<TUser, TUserDto> {
             Services.Replace(ServiceDescriptor.Describe(typeof(IUserMapper<TUser, TUserDto>), typeof(TMapper), lifetime));
             return this;
+        }
+
+        /// <summary>Uses a derived RuntimeApps user manager as the shared Identity manager instance.</summary>
+        public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddUserManager<TManager>() where TManager : RuntimeAppsUserManager<TUser> {
+            Services.TryAddScoped<TManager>();
+            Services.Replace(ServiceDescriptor.Scoped<RuntimeAppsUserManager<TUser>>(sp => sp.GetRequiredService<TManager>()));
+            Services.Replace(ServiceDescriptor.Scoped<UserManager<TUser>>(sp => sp.GetRequiredService<RuntimeAppsUserManager<TUser>>()));
+            Services.Replace(ServiceDescriptor.Scoped<IUserManager<TUser>>(sp => sp.GetRequiredService<RuntimeAppsUserManager<TUser>>()));
+            AddUserManagerInterfaces();
+            return this;
+        }
+
+        private void AddUserManagerRegistration() {
+            var nativeManager = Services.LastOrDefault(descriptor => descriptor.ServiceType == typeof(UserManager<TUser>));
+            Services.TryAddScoped<RuntimeAppsUserManager<TUser>>();
+
+            if(nativeManager == null || nativeManager.ImplementationType == typeof(UserManager<TUser>)) {
+                // Replace only Identity's default registration, or add our alias when none exists.
+                Services.Replace(ServiceDescriptor.Scoped<UserManager<TUser>>(sp => sp.GetRequiredService<RuntimeAppsUserManager<TUser>>()));
+            } else {
+                // Preserve an existing consumer registration. It must use the documented
+                // RuntimeAppsUserManager customization point for all abstractions to share it.
+                Services.Replace(ServiceDescriptor.Scoped<RuntimeAppsUserManager<TUser>>(sp =>
+                    sp.GetRequiredService<UserManager<TUser>>() as RuntimeAppsUserManager<TUser>
+                    ?? throw new InvalidOperationException($"The registered {typeof(UserManager<TUser>).Name} must derive from {typeof(RuntimeAppsUserManager<TUser>).Name}. Register a derived manager with AddUserManager<TManager>() so focused interfaces and SignInManager share the same instance.")));
+            }
+        }
+
+        private void AddUserManagerInterfaces() {
+            Services.TryAddScoped<IUserPasswordManager<TUser>>(sp => sp.GetRequiredService<RuntimeAppsUserManager<TUser>>());
+            Services.TryAddScoped<IUserEmailManager<TUser>>(sp => sp.GetRequiredService<RuntimeAppsUserManager<TUser>>());
+            Services.TryAddScoped<IUserPhoneNumberManager<TUser>>(sp => sp.GetRequiredService<RuntimeAppsUserManager<TUser>>());
+            Services.TryAddScoped<IUserLoginManager<TUser>>(sp => sp.GetRequiredService<RuntimeAppsUserManager<TUser>>());
+            Services.TryAddScoped<IUserClaimManager<TUser>>(sp => sp.GetRequiredService<RuntimeAppsUserManager<TUser>>());
+            Services.TryAddScoped<IUserRoleManager<TUser>>(sp => sp.GetRequiredService<RuntimeAppsUserManager<TUser>>());
+            Services.TryAddScoped<IUserTwoFactorManager<TUser>>(sp => sp.GetRequiredService<RuntimeAppsUserManager<TUser>>());
+            Services.TryAddScoped<IUserLockoutManager<TUser>>(sp => sp.GetRequiredService<RuntimeAppsUserManager<TUser>>());
+            Services.TryAddScoped<IUserTokenManager<TUser>>(sp => sp.GetRequiredService<RuntimeAppsUserManager<TUser>>());
         }
         public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddUserMapper<TUserDto>(Func<TUser, TUserDto> toDto, Func<TUserDto, TUser> toUser) where TUserDto : class {
             ArgumentNullException.ThrowIfNull(toDto); ArgumentNullException.ThrowIfNull(toUser);

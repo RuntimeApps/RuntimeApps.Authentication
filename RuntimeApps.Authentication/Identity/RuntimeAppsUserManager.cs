@@ -3,7 +3,11 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using RuntimeApps.Authentication.Identity.Contracts;
 namespace RuntimeApps.Authentication.Identity {
-    public class RuntimeAppsUserManager<TUser>: UserManager<TUser>, IUserManager<TUser>
+    public class RuntimeAppsUserManager<TUser>: UserManager<TUser>,
+        IUserManager<TUser>, IUserPasswordManager<TUser>, IUserEmailManager<TUser>,
+        IUserPhoneNumberManager<TUser>, IUserLoginManager<TUser>, IUserClaimManager<TUser>,
+        IUserRoleManager<TUser>, IUserTwoFactorManager<TUser>, IUserLockoutManager<TUser>,
+        IUserTokenManager<TUser>
         where TUser : class {
         public RuntimeAppsUserManager(IUserStore<TUser> store,
                                       IOptions<IdentityOptions> optionsAccessor,

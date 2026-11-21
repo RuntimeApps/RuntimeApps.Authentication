@@ -12,12 +12,12 @@ namespace RuntimeApps.Authentication.Endpoints.Users {
             where TUser : class {
             var routeGroup = endpoints.MapGroup("");
 
-            routeGroup.MapGet("{userId}/claim", async Task<Results<Ok<IEnumerable<ClaimDto>>, ValidationProblem>> ([FromRoute] string userId, IUserManager<TUser> userManager) => {
+            routeGroup.MapGet("{userId}/claim", async Task<Results<Ok<IEnumerable<ClaimDto>>, ValidationProblem>> ([FromRoute] string userId, IUserManager<TUser> userManager, IUserClaimManager<TUser> claimManager) => {
                 var user = await userManager.FindByIdAsync(userId);
                 if(user == null)
                     return UserNotFound();
 
-                var result = await userManager.GetClaimsAsync(user);
+                var result = await claimManager.GetClaimsAsync(user);
                 return TypedResults.Ok(result?.Select(c => new ClaimDto(c)));
             });
 
@@ -27,45 +27,45 @@ namespace RuntimeApps.Authentication.Endpoints.Users {
             where TUser : class {
             var routeGroup = endpoints.MapGroup("");
 
-            routeGroup.MapPost("{userId}/claim", async Task<Results<Ok, ValidationProblem>> ([FromRoute] string userId, [FromBody] ClaimDto claim, IUserManager<TUser> userManager) => {
+            routeGroup.MapPost("{userId}/claim", async Task<Results<Ok, ValidationProblem>> ([FromRoute] string userId, [FromBody] ClaimDto claim, IUserManager<TUser> userManager, IUserClaimManager<TUser> claimManager) => {
                 var user = await userManager.FindByIdAsync(userId);
                 if(user == null)
                     return UserNotFound();
 
-                var result = await userManager.AddClaimAsync(user, claim.ToClaim());
+                var result = await claimManager.AddClaimAsync(user, claim.ToClaim());
                 if(!result.Succeeded)
                     return result.CreateValidationProblem();
                 return TypedResults.Ok();
             });
 
-            routeGroup.MapDelete("{userId}/claim", async Task<Results<Ok, ValidationProblem>> ([FromRoute] string userId, [FromBody] ClaimDto claim, IUserManager<TUser> userManager) => {
+            routeGroup.MapDelete("{userId}/claim", async Task<Results<Ok, ValidationProblem>> ([FromRoute] string userId, [FromBody] ClaimDto claim, IUserManager<TUser> userManager, IUserClaimManager<TUser> claimManager) => {
                 var user = await userManager.FindByIdAsync(userId);
                 if(user == null)
                     return UserNotFound();
 
-                var result = await userManager.RemoveClaimAsync(user, claim.ToClaim());
+                var result = await claimManager.RemoveClaimAsync(user, claim.ToClaim());
                 if(!result.Succeeded)
                     return result.CreateValidationProblem();
                 return TypedResults.Ok();
             });
 
-            routeGroup.MapPost("{userId}/claim/bulk", async Task<Results<Ok, ValidationProblem>> ([FromRoute] string userId, [FromBody] IEnumerable<ClaimDto> claims, IUserManager<TUser> userManager) => {
+            routeGroup.MapPost("{userId}/claim/bulk", async Task<Results<Ok, ValidationProblem>> ([FromRoute] string userId, [FromBody] IEnumerable<ClaimDto> claims, IUserManager<TUser> userManager, IUserClaimManager<TUser> claimManager) => {
                 var user = await userManager.FindByIdAsync(userId);
                 if(user == null)
                     return UserNotFound();
 
-                var result = await userManager.AddClaimsAsync(user, claims.Select(c => c.ToClaim()));
+                var result = await claimManager.AddClaimsAsync(user, claims.Select(c => c.ToClaim()));
                 if(!result.Succeeded)
                     return result.CreateValidationProblem();
                 return TypedResults.Ok();
             });
 
-            routeGroup.MapDelete("{userId}/claim/bulk", async Task<Results<Ok, ValidationProblem>> ([FromRoute] string userId, [FromBody] IEnumerable<ClaimDto> claims, IUserManager<TUser> userManager) => {
+            routeGroup.MapDelete("{userId}/claim/bulk", async Task<Results<Ok, ValidationProblem>> ([FromRoute] string userId, [FromBody] IEnumerable<ClaimDto> claims, IUserManager<TUser> userManager, IUserClaimManager<TUser> claimManager) => {
                 var user = await userManager.FindByIdAsync(userId);
                 if(user == null)
                     return UserNotFound();
 
-                var result = await userManager.RemoveClaimsAsync(user, claims.Select(c => c.ToClaim()));
+                var result = await claimManager.RemoveClaimsAsync(user, claims.Select(c => c.ToClaim()));
                 if(!result.Succeeded)
                     return result.CreateValidationProblem();
                 return TypedResults.Ok();
