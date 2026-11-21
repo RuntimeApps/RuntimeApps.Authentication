@@ -3,9 +3,21 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Moq;
-using RuntimeApps.Authentication.Interface;
-using RuntimeApps.Authentication.Service;
-
+using RuntimeApps.Authentication.Features.Account.Contracts;
+using RuntimeApps.Authentication.Features.ExternalLogin.Contracts;
+using RuntimeApps.Authentication.Features.PasswordRecovery.Contracts;
+using RuntimeApps.Authentication.Features.RefreshTokens.Contracts;
+using RuntimeApps.Authentication.Features.Registration.Contracts;
+using RuntimeApps.Authentication.Features.Verification.Contracts;
+using RuntimeApps.Authentication.Identity.Contracts;
+using RuntimeApps.Authentication.Features.Account.Services;
+using RuntimeApps.Authentication.Features.ExternalLogin.Providers;
+using RuntimeApps.Authentication.Features.ExternalLogin.Services;
+using RuntimeApps.Authentication.Features.PasswordRecovery.Services;
+using RuntimeApps.Authentication.Features.RefreshTokens.Services;
+using RuntimeApps.Authentication.Features.Registration.Services;
+using RuntimeApps.Authentication.Features.Verification.Services;
+using RuntimeApps.Authentication.Identity;
 namespace RuntimeApps.Authentication.Test {
     public class UserAccountServiceTest {
         private const IdentityUser nullUSer = null;
@@ -55,7 +67,7 @@ namespace RuntimeApps.Authentication.Test {
                 UserName = userName,
                 EmailConfirmed = true
             };
-            var token = new Model.Token() {
+            var token = new RuntimeApps.Authentication.Shared.Models.Token() {
                 AuthenticationToken = "",
                 ExpireDate = DateTimeOffset.Now.AddDays(30),
             };
@@ -131,7 +143,7 @@ namespace RuntimeApps.Authentication.Test {
         [Fact]
         public async Task CompleteRegistration_Success_ConfirmedUser() {
             var user = new IdentityUser { Email = "test@test.com", EmailConfirmed = true };
-            var token = new Model.Token {
+            var token = new RuntimeApps.Authentication.Shared.Models.Token {
                 AuthenticationToken = "",
                 ExpireDate = DateTimeOffset.Now.AddDays(30),
             };
@@ -151,7 +163,7 @@ namespace RuntimeApps.Authentication.Test {
             var result = await _userAccountService.CompleteRegistrationAsync(user);
 
             result.Succeeded.Should().BeFalse();
-            result.Code.Should().Be(RuntimeApps.Authentication.Model.ResultCode.Forbidden);
+            result.Code.Should().Be(RuntimeApps.Authentication.Shared.Models.ResultCode.Forbidden);
             _jwtProviderMock.Verify(provider => provider.GenerateTokenAsync(It.IsAny<IdentityUser>()), Times.Never());
         }
 
@@ -162,7 +174,7 @@ namespace RuntimeApps.Authentication.Test {
             var user = new IdentityUser() {
                 Email = "test@test.com"
             };
-            var appToken = new Model.Token() {
+            var appToken = new RuntimeApps.Authentication.Shared.Models.Token() {
                 AuthenticationToken = "",
                 ExpireDate = DateTimeOffset.Now.AddDays(30),
             };
@@ -172,7 +184,7 @@ namespace RuntimeApps.Authentication.Test {
             _externalLoginProvider2.SetupGet(e => e.Provider)
                 .Returns(provider);
             _externalLoginProvider2.Setup(e => e.ValidateAsync(token))
-                .ReturnsAsync(new RuntimeApps.Authentication.Model.ExternalLoginProviderResult<IdentityUser> {
+                .ReturnsAsync(new RuntimeApps.Authentication.Features.ExternalLogin.Models.ExternalLoginProviderResult<IdentityUser> {
                     User = user, LoginInfo = loginInfo, Email = user.Email, EmailVerified = false
                 });
             _userManagerMock.Setup(u => u.FindByLoginAsync(provider, token))
@@ -208,7 +220,7 @@ namespace RuntimeApps.Authentication.Test {
             _externalLoginProvider1.SetupGet(item => item.Provider).Returns("Not Selected");
             _externalLoginProvider2.SetupGet(item => item.Provider).Returns(provider);
             _externalLoginProvider2.Setup(item => item.ValidateAsync(token))
-                .ReturnsAsync(new RuntimeApps.Authentication.Model.ExternalLoginProviderResult<IdentityUser> {
+                .ReturnsAsync(new RuntimeApps.Authentication.Features.ExternalLogin.Models.ExternalLoginProviderResult<IdentityUser> {
                     User = new IdentityUser { Email = existingUser.Email },
                     LoginInfo = loginInfo,
                     Email = existingUser.Email,
@@ -220,7 +232,7 @@ namespace RuntimeApps.Authentication.Test {
             var result = await _userAccountService.ExternalLoginAsync(provider, token);
 
             Assert.False(result.Succeeded);
-            Assert.Equal(RuntimeApps.Authentication.Model.ResultCode.Conflict, result.Code);
+            Assert.Equal(RuntimeApps.Authentication.Shared.Models.ResultCode.Conflict, result.Code);
             _userManagerMock.Verify(manager => manager.AddLoginAsync(It.IsAny<IdentityUser>(), It.IsAny<UserLoginInfo>()), Times.Never());
         }
 
@@ -233,7 +245,7 @@ namespace RuntimeApps.Authentication.Test {
             _externalLoginProvider1.SetupGet(item => item.Provider).Returns("Not Selected");
             _externalLoginProvider2.SetupGet(item => item.Provider).Returns(provider);
             _externalLoginProvider2.Setup(item => item.ValidateAsync(token))
-                .ReturnsAsync(new RuntimeApps.Authentication.Model.ExternalLoginProviderResult<IdentityUser> {
+                .ReturnsAsync(new RuntimeApps.Authentication.Features.ExternalLogin.Models.ExternalLoginProviderResult<IdentityUser> {
                     User = new IdentityUser { Email = user.Email }, LoginInfo = loginInfo,
                     Email = user.Email, EmailVerified = false
                 });
@@ -243,7 +255,7 @@ namespace RuntimeApps.Authentication.Test {
             var result = await _userAccountService.ExternalLoginAsync(provider, token);
 
             Assert.False(result.Succeeded);
-            Assert.Equal(RuntimeApps.Authentication.Model.ResultCode.Conflict, result.Code);
+            Assert.Equal(RuntimeApps.Authentication.Shared.Models.ResultCode.Conflict, result.Code);
             _userManagerMock.Verify(manager => manager.AddLoginAsync(It.IsAny<IdentityUser>(), It.IsAny<UserLoginInfo>()), Times.Never());
         }
 
@@ -259,7 +271,7 @@ namespace RuntimeApps.Authentication.Test {
             _externalLoginProvider1.SetupGet(item => item.Provider).Returns("Not Selected");
             _externalLoginProvider2.SetupGet(item => item.Provider).Returns(provider);
             _externalLoginProvider2.Setup(item => item.ValidateAsync(token))
-                .ReturnsAsync(new RuntimeApps.Authentication.Model.ExternalLoginProviderResult<IdentityUser> {
+                .ReturnsAsync(new RuntimeApps.Authentication.Features.ExternalLogin.Models.ExternalLoginProviderResult<IdentityUser> {
                     User = user, LoginInfo = loginInfo, Email = user.Email, EmailVerified = false
                 });
             _userManagerMock.Setup(manager => manager.FindByLoginAsync(provider, token)).ReturnsAsync((IdentityUser)null);
@@ -267,10 +279,10 @@ namespace RuntimeApps.Authentication.Test {
             _userManagerMock.Setup(manager => manager.CreateAsync(user)).ReturnsAsync(IdentityResult.Success);
             _userManagerMock.Setup(manager => manager.AddLoginAsync(user, loginInfo)).ReturnsAsync(IdentityResult.Success);
             workflow.Setup(service => service.StartAsync(
-                    user, RuntimeApps.Authentication.Model.VerificationPurpose.Registration,
-                    RuntimeApps.Authentication.Model.VerificationChannel.Email, user.Email,
+                    user, RuntimeApps.Authentication.Features.Verification.Models.VerificationPurpose.Registration,
+                    RuntimeApps.Authentication.Features.Verification.Models.VerificationChannel.Email, user.Email,
                     null, null, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(RuntimeApps.Authentication.Model.VerificationOperationResult.Success("external-handle", expiresAt));
+                .ReturnsAsync(RuntimeApps.Authentication.Features.Verification.Models.VerificationOperationResult.Success("external-handle", expiresAt));
 
             var service = new UserAccountService<IdentityUser, string>(
                 _userManagerMock.Object, _signInManagerMock.Object,
@@ -278,7 +290,7 @@ namespace RuntimeApps.Authentication.Test {
                 _authenticationHandlerProviderMock.Object, _httpContextAccessorMock.Object,
                 _userClaimsPrincipalFactoryMock.Object, _authenticationSchemeProviderMock.Object,
                 _jwtProviderMock.Object, null, null, _externalLoginEmailTrustPolicyMock.Object,
-                Microsoft.Extensions.Options.Options.Create(new RuntimeApps.Authentication.Model.VerificationOptions {
+                Microsoft.Extensions.Options.Options.Create(new RuntimeApps.Authentication.Features.Verification.Models.VerificationOptions {
                     RequireEmailVerificationForExternalLogins = true
                 }), workflow.Object);
 
@@ -298,7 +310,7 @@ namespace RuntimeApps.Authentication.Test {
             var user = new IdentityUser() {
                 Email = "test@test.com"
             };
-            var appToken = new Model.Token() {
+            var appToken = new RuntimeApps.Authentication.Shared.Models.Token() {
                 AuthenticationToken = "",
                 ExpireDate = DateTimeOffset.Now.AddDays(30),
             };
@@ -308,7 +320,7 @@ namespace RuntimeApps.Authentication.Test {
             _externalLoginProvider2.SetupGet(e => e.Provider)
                 .Returns(provider);
             _externalLoginProvider2.Setup(e => e.ValidateAsync(token))
-                .ReturnsAsync(new RuntimeApps.Authentication.Model.ExternalLoginProviderResult<IdentityUser> {
+                .ReturnsAsync(new RuntimeApps.Authentication.Features.ExternalLogin.Models.ExternalLoginProviderResult<IdentityUser> {
                     User = user, LoginInfo = loginInfo, Email = user.Email, EmailVerified = false
                 });
             _userManagerMock.Setup(u => u.FindByLoginAsync(provider, token))

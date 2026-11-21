@@ -1,5 +1,10 @@
-﻿using RuntimeApps.Authentication.Interface;
-
+﻿using RuntimeApps.Authentication.Features.Account.Contracts;
+using RuntimeApps.Authentication.Features.ExternalLogin.Contracts;
+using RuntimeApps.Authentication.Features.PasswordRecovery.Contracts;
+using RuntimeApps.Authentication.Features.RefreshTokens.Contracts;
+using RuntimeApps.Authentication.Features.Registration.Contracts;
+using RuntimeApps.Authentication.Features.Verification.Contracts;
+using RuntimeApps.Authentication.Identity.Contracts;
 namespace RuntimeApps.Authentication.Sample.CustomModel {
     public class UserMapper: IUserMapper<User, UserDto> {
         public UserDto ToDto(User user) {

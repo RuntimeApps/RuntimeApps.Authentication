@@ -1,8 +1,21 @@
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
-using RuntimeApps.Authentication.Model;
-using RuntimeApps.Authentication.Service;
-
+using RuntimeApps.Authentication.Features.Account.Models;
+using RuntimeApps.Authentication.Features.ExternalLogin.Models;
+using RuntimeApps.Authentication.Features.PasswordRecovery.Models;
+using RuntimeApps.Authentication.Features.RefreshTokens.Models;
+using RuntimeApps.Authentication.Features.Registration.Models;
+using RuntimeApps.Authentication.Features.Verification.Models;
+using RuntimeApps.Authentication.Identity.Models;
+using RuntimeApps.Authentication.Shared.Models;
+using RuntimeApps.Authentication.Features.Account.Services;
+using RuntimeApps.Authentication.Features.ExternalLogin.Providers;
+using RuntimeApps.Authentication.Features.ExternalLogin.Services;
+using RuntimeApps.Authentication.Features.PasswordRecovery.Services;
+using RuntimeApps.Authentication.Features.RefreshTokens.Services;
+using RuntimeApps.Authentication.Features.Registration.Services;
+using RuntimeApps.Authentication.Features.Verification.Services;
+using RuntimeApps.Authentication.Identity;
 namespace RuntimeApps.Authentication.Test {
     public class VerificationPrimitivesTest {
         [Fact]

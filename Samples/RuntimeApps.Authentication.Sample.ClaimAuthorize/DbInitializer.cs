@@ -1,8 +1,13 @@
 ﻿using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using RuntimeApps.Authentication.Interface;
-
+using RuntimeApps.Authentication.Features.Account.Contracts;
+using RuntimeApps.Authentication.Features.ExternalLogin.Contracts;
+using RuntimeApps.Authentication.Features.PasswordRecovery.Contracts;
+using RuntimeApps.Authentication.Features.RefreshTokens.Contracts;
+using RuntimeApps.Authentication.Features.Registration.Contracts;
+using RuntimeApps.Authentication.Features.Verification.Contracts;
+using RuntimeApps.Authentication.Identity.Contracts;
 namespace RuntimeApps.Authentication.Sample.ClaimAuthorize {
     public class DbInitializer {
         public static void Initialize(ApplicationDbContext context, IUserManager<IdentityUser<int>> userManager, IRoleManager<IdentityRole<int>> roleManager) {
