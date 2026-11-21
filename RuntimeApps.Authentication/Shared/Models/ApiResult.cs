@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace RuntimeApps.Authentication.Shared.Models {
@@ -20,7 +21,17 @@ namespace RuntimeApps.Authentication.Shared.Models {
 
         public override void OnFormatting(ActionContext context) {
             if(StatusCode == null && Value is Result result) {
-                StatusCode = (int)result.Code;
+                // ResultCode.BadRequest retains its historical numeric value (401) for
+                // serialized compatibility; HTTP semantics are mapped explicitly here.
+                StatusCode = result.Code switch {
+                    ResultCode.Success => StatusCodes.Status200OK,
+                    ResultCode.Accepted => StatusCodes.Status202Accepted,
+                    ResultCode.BadRequest => StatusCodes.Status400BadRequest,
+                    ResultCode.Forbidden => StatusCodes.Status403Forbidden,
+                    ResultCode.Conflict => StatusCodes.Status409Conflict,
+                    ResultCode.Locked => StatusCodes.Status423Locked,
+                    _ => StatusCodes.Status500InternalServerError
+                };
             }
             base.OnFormatting(context);
         }

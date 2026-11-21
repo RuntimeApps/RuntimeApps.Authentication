@@ -12,14 +12,14 @@ namespace RuntimeApps.Authentication.Endpoints.Roles {
             where TRole : class {
             var routeGroup = endpoints.MapGroup("");
 
-            routeGroup.MapGet("{roleId}/Claim", async Task<Results<Ok<IEnumerable<ClaimDto>>, ValidationProblem>> ([FromRoute] string roleId, IRoleManager<TRole> roleManager, HttpContext httpContext) => {
+            routeGroup.MapGet("{roleId}/Claim", async Task<IResult> ([FromRoute] string roleId, IRoleManager<TRole> roleManager, HttpContext httpContext) => {
                 var role = await roleManager.FindByIdAsync(roleId);
                 if(role == null)
                     return RoleNotFound();
 
                 var result = await roleManager.GetClaimsAsync(role);
                 return TypedResults.Ok<IEnumerable<ClaimDto>>(result.Select(c => new ClaimDto(c)));
-            });
+            }).Produces<IEnumerable<ClaimDto>>(StatusCodes.Status200OK).Produces(StatusCodes.Status404NotFound);
 
             return endpoints;
         }
@@ -28,33 +28,36 @@ namespace RuntimeApps.Authentication.Endpoints.Roles {
             where TRole : class {
             var routeGroup = endpoints.MapGroup("");
 
-            routeGroup.MapPost("{roleId}/Claim", async Task<Results<Ok, ValidationProblem>> ([FromRoute] string roleId, [FromBody] ClaimDto claim, IRoleManager<TRole> roleManager, HttpContext httpContext) => {
+            routeGroup.MapPost("{roleId}/Claim", async Task<IResult> ([FromRoute] string roleId, [FromBody] ClaimDto claim, IRoleManager<TRole> roleManager, HttpContext httpContext) => {
                 var role = await roleManager.FindByIdAsync(roleId);
                 if(role == null)
                     return RoleNotFound();
 
                 var result = await roleManager.AddClaimAsync(role, claim.ToClaim());
                 if(!result.Succeeded)
-                    return result.CreateValidationProblem();
+                    return result.CreatePublicError();
                 return TypedResults.Ok();
-            });
+            }).Produces(StatusCodes.Status200OK)
+            .ProducesValidationProblem(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound);
 
-            routeGroup.MapDelete("{roleId}/Claim", async Task<Results<Ok, ValidationProblem>> ([FromRoute] string roleId, [FromBody] ClaimDto claim, IRoleManager<TRole> roleManager, HttpContext httpContext) => {
+            routeGroup.MapDelete("{roleId}/Claim", async Task<IResult> ([FromRoute] string roleId, [FromBody] ClaimDto claim, IRoleManager<TRole> roleManager, HttpContext httpContext) => {
                 var role = await roleManager.FindByIdAsync(roleId);
                 if(role == null)
                     return RoleNotFound();
 
                 var result = await roleManager.RemoveClaimAsync(role, claim.ToClaim());
                 if(!result.Succeeded)
-                    return result.CreateValidationProblem();
+                    return result.CreatePublicError();
                 return TypedResults.Ok();
-            });
+            }).Produces(StatusCodes.Status200OK)
+            .ProducesValidationProblem(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound);
 
             return endpoints;
         }
 
-        private static ValidationProblem RoleNotFound() =>
-            ValidationProblemFactory.CreateValidationProblem("NotFound", "Role Not Found");
+        private static IResult RoleNotFound() => TypedResults.NotFound();
 
     }
 }

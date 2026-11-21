@@ -117,7 +117,9 @@ namespace RuntimeApps.Authentication.Features.PasswordRecovery.Services {
                 return new Result(ResultCode.BadRequest, resetResult.Errors);
 
             if(_refreshTokens != null)
-                await _refreshTokens.RevokeAllAsync(verification.Data.Id, cancellationToken);
+                // The password has already changed; finish session invalidation even if the
+                // client disconnects during this cleanup step.
+                await _refreshTokens.RevokeAllAsync(verification.Data.Id, CancellationToken.None);
 
             return new Result();
         }

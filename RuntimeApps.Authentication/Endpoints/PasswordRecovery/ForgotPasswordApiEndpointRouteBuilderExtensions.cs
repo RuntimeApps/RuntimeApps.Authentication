@@ -45,9 +45,10 @@ namespace RuntimeApps.Authentication.Endpoints.PasswordRecovery {
                 HttpContext httpContext) => {
                     var result = await service.RequestAsync(request?.Email, httpContext.RequestAborted);
                     return TypedResults.Ok(result);
-                }).WithName("PasswordRecovery_Forgot").WithTags("Password recovery").WithSummary("Request a password reset");
+                }).WithName("PasswordRecovery_Forgot").WithTags("Password recovery").WithSummary("Request a password reset")
+                  .Produces<ForgotPasswordResponse>(StatusCodes.Status200OK);
 
-            group.MapPost("reset-password", async Task<Results<Ok, ValidationProblem>> (
+            group.MapPost("reset-password", async Task<IResult> (
                 [FromBody] ResetPasswordModel request,
                 IForgotPasswordService<TUser, TKey> service,
                 HttpContext httpContext) => {
@@ -59,9 +60,11 @@ namespace RuntimeApps.Authentication.Endpoints.PasswordRecovery {
                         request.VerificationHandle, request.Credential, request.NewPassword,
                         httpContext.RequestAborted);
                     if(!result.Succeeded)
-                        return result.CreateValidationProblem();
+                        return result.CreatePublicError();
                     return TypedResults.Ok();
-                }).WithName("PasswordRecovery_Reset").WithTags("Password recovery").WithSummary("Reset a password");
+                }).WithName("PasswordRecovery_Reset").WithTags("Password recovery").WithSummary("Reset a password")
+                  .Produces(StatusCodes.Status200OK)
+                  .ProducesValidationProblem(StatusCodes.Status400BadRequest);
 
             return endpoints;
         }

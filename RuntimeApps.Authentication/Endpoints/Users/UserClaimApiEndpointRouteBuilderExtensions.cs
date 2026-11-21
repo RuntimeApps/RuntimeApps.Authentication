@@ -12,14 +12,15 @@ namespace RuntimeApps.Authentication.Endpoints.Users {
             where TUser : class {
             var routeGroup = endpoints.MapGroup("");
 
-            routeGroup.MapGet("{userId}/claim", async Task<Results<Ok<IEnumerable<ClaimDto>>, ValidationProblem>> ([FromRoute] string userId, IUserManager<TUser> userManager, IUserClaimManager<TUser> claimManager) => {
+            routeGroup.MapGet("{userId}/claim", async Task<IResult> ([FromRoute] string userId, IUserManager<TUser> userManager, IUserClaimManager<TUser> claimManager) => {
                 var user = await userManager.FindByIdAsync(userId);
                 if(user == null)
                     return UserNotFound();
 
                 var result = await claimManager.GetClaimsAsync(user);
                 return TypedResults.Ok(result?.Select(c => new ClaimDto(c)));
-            });
+            }).Produces<IEnumerable<ClaimDto>>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound);
 
             return endpoints;
         }
@@ -27,55 +28,62 @@ namespace RuntimeApps.Authentication.Endpoints.Users {
             where TUser : class {
             var routeGroup = endpoints.MapGroup("");
 
-            routeGroup.MapPost("{userId}/claim", async Task<Results<Ok, ValidationProblem>> ([FromRoute] string userId, [FromBody] ClaimDto claim, IUserManager<TUser> userManager, IUserClaimManager<TUser> claimManager) => {
+            routeGroup.MapPost("{userId}/claim", async Task<IResult> ([FromRoute] string userId, [FromBody] ClaimDto claim, IUserManager<TUser> userManager, IUserClaimManager<TUser> claimManager) => {
                 var user = await userManager.FindByIdAsync(userId);
                 if(user == null)
                     return UserNotFound();
 
                 var result = await claimManager.AddClaimAsync(user, claim.ToClaim());
                 if(!result.Succeeded)
-                    return result.CreateValidationProblem();
+                    return result.CreatePublicError();
                 return TypedResults.Ok();
-            });
+            }).Produces(StatusCodes.Status200OK)
+            .ProducesValidationProblem(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound);
 
-            routeGroup.MapDelete("{userId}/claim", async Task<Results<Ok, ValidationProblem>> ([FromRoute] string userId, [FromBody] ClaimDto claim, IUserManager<TUser> userManager, IUserClaimManager<TUser> claimManager) => {
+            routeGroup.MapDelete("{userId}/claim", async Task<IResult> ([FromRoute] string userId, [FromBody] ClaimDto claim, IUserManager<TUser> userManager, IUserClaimManager<TUser> claimManager) => {
                 var user = await userManager.FindByIdAsync(userId);
                 if(user == null)
                     return UserNotFound();
 
                 var result = await claimManager.RemoveClaimAsync(user, claim.ToClaim());
                 if(!result.Succeeded)
-                    return result.CreateValidationProblem();
+                    return result.CreatePublicError();
                 return TypedResults.Ok();
-            });
+            }).Produces(StatusCodes.Status200OK)
+            .ProducesValidationProblem(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound);
 
-            routeGroup.MapPost("{userId}/claim/bulk", async Task<Results<Ok, ValidationProblem>> ([FromRoute] string userId, [FromBody] IEnumerable<ClaimDto> claims, IUserManager<TUser> userManager, IUserClaimManager<TUser> claimManager) => {
+            routeGroup.MapPost("{userId}/claim/bulk", async Task<IResult> ([FromRoute] string userId, [FromBody] IEnumerable<ClaimDto> claims, IUserManager<TUser> userManager, IUserClaimManager<TUser> claimManager) => {
                 var user = await userManager.FindByIdAsync(userId);
                 if(user == null)
                     return UserNotFound();
 
                 var result = await claimManager.AddClaimsAsync(user, claims.Select(c => c.ToClaim()));
                 if(!result.Succeeded)
-                    return result.CreateValidationProblem();
+                    return result.CreatePublicError();
                 return TypedResults.Ok();
-            });
+            }).Produces(StatusCodes.Status200OK)
+            .ProducesValidationProblem(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound);
 
-            routeGroup.MapDelete("{userId}/claim/bulk", async Task<Results<Ok, ValidationProblem>> ([FromRoute] string userId, [FromBody] IEnumerable<ClaimDto> claims, IUserManager<TUser> userManager, IUserClaimManager<TUser> claimManager) => {
+            routeGroup.MapDelete("{userId}/claim/bulk", async Task<IResult> ([FromRoute] string userId, [FromBody] IEnumerable<ClaimDto> claims, IUserManager<TUser> userManager, IUserClaimManager<TUser> claimManager) => {
                 var user = await userManager.FindByIdAsync(userId);
                 if(user == null)
                     return UserNotFound();
 
                 var result = await claimManager.RemoveClaimsAsync(user, claims.Select(c => c.ToClaim()));
                 if(!result.Succeeded)
-                    return result.CreateValidationProblem();
+                    return result.CreatePublicError();
                 return TypedResults.Ok();
-            });
+            }).Produces(StatusCodes.Status200OK)
+            .ProducesValidationProblem(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound);
 
             return endpoints;
         }
 
-        private static ValidationProblem UserNotFound() =>
-            ValidationProblemFactory.CreateValidationProblem("NotFound", "User not found");
+        private static IResult UserNotFound() => TypedResults.NotFound();
 
     }
 }

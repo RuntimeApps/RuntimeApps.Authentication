@@ -182,21 +182,12 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
         }
 
         protected virtual Result<TUser, Token> GetIdentityError(SignInResult signInResult) {
-            ResultCode code = ResultCode.BadRequest;
-            var description = "Username or password is incorrect";
-            if(signInResult.IsNotAllowed) {
-                description = "You are not allowed to login";
-                code = ResultCode.Forbidden;
-            }
-            else if(signInResult.IsLockedOut) {
-                description = "You are locked out";
-                code = ResultCode.Conflict;
-            }
-            else if(signInResult.RequiresTwoFactor) {
-                description = "Two factor authentication required";
-                code = ResultCode.Accepted;
-            }
-            return new Result<TUser, Token>(code, Result.CreateErrors(signInResult.ToString(), description));
+            if(signInResult.RequiresTwoFactor)
+                return new Result<TUser, Token>(ResultCode.Accepted, Result.CreateErrors("TwoFactorRequired", "A second authentication step is required."));
+
+            // Keep all credential-state failures identical at the public boundary.
+            return new Result<TUser, Token>(ResultCode.BadRequest,
+                Result.CreateErrors("AuthenticationFailed", "The username or password is incorrect."));
         }
 
         protected virtual async Task<Result<TUser, Token>> GenerateTokenAsync(TUser user, CancellationToken cancellationToken = default) {

@@ -11,17 +11,21 @@ namespace RuntimeApps.Authentication.Endpoints.Roles {
             where TRole : class {
             var routeGroup = endpoints.MapGroup("");
 
-            routeGroup.MapGet("{roleId}", async Task<TRole> ([FromRoute] string roleId, IRoleManager<TRole> roleManager) => {
-                return await roleManager.FindByIdAsync(roleId);
-            });
+            routeGroup.MapGet("{roleId}", async Task<IResult> ([FromRoute] string roleId, IRoleManager<TRole> roleManager) => {
+                var role = await roleManager.FindByIdAsync(roleId);
+                return role == null ? TypedResults.NotFound() : TypedResults.Ok(role);
+            }).Produces<TRole>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound);
 
-            routeGroup.MapGet("name/{roleName}", async Task<TRole> ([FromRoute] string roleName, IRoleManager<TRole> roleManager) => {
-                return await roleManager.FindByNameAsync(roleName);
-            });
+            routeGroup.MapGet("name/{roleName}", async Task<IResult> ([FromRoute] string roleName, IRoleManager<TRole> roleManager) => {
+                var role = await roleManager.FindByNameAsync(roleName);
+                return role == null ? TypedResults.NotFound() : TypedResults.Ok(role);
+            }).Produces<TRole>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound);
 
             routeGroup.MapGet("/", IEnumerable<TRole> (IRoleManager<TRole> roleManager) => {
                 return roleManager.Roles.ToList();
-            });
+            }).Produces<IEnumerable<TRole>>(StatusCodes.Status200OK);
 
             return endpoints;
         }
@@ -30,33 +34,37 @@ namespace RuntimeApps.Authentication.Endpoints.Roles {
             where TRole : class {
             var routeGroup = endpoints.MapGroup("");
 
-            routeGroup.MapPost("/", async Task<Results<Ok, ValidationProblem>> ([FromBody] TRole role, IRoleManager<TRole> roleManager) => {
+            routeGroup.MapPost("/", async Task<IResult> ([FromBody] TRole role, IRoleManager<TRole> roleManager) => {
                 var result = await roleManager.CreateAsync(role);
                 if(!result.Succeeded)
-                    return result.CreateValidationProblem();
+                    return result.CreatePublicError();
 
                 return TypedResults.Ok();
-            });
+            }).Produces(StatusCodes.Status200OK)
+              .ProducesValidationProblem(StatusCodes.Status400BadRequest);
 
-            routeGroup.MapPut("/", async Task<Results<Ok, ValidationProblem>> ([FromBody] TRole role, IRoleManager<TRole> roleManager) => {
+            routeGroup.MapPut("/", async Task<IResult> ([FromBody] TRole role, IRoleManager<TRole> roleManager) => {
                 var result = await roleManager.UpdateAsync(role);
                 if(!result.Succeeded)
-                    return result.CreateValidationProblem();
+                    return result.CreatePublicError();
 
                 return TypedResults.Ok();
-            });
+            }).Produces(StatusCodes.Status200OK)
+              .ProducesValidationProblem(StatusCodes.Status400BadRequest);
 
-            routeGroup.MapDelete("{roleId}", async Task<Results<Ok, ValidationProblem>> ([FromRoute] string roleId, IRoleManager<TRole> roleManager) => {
+            routeGroup.MapDelete("{roleId}", async Task<IResult> ([FromRoute] string roleId, IRoleManager<TRole> roleManager) => {
                 var role = await roleManager.FindByIdAsync(roleId);
                 if(role == null)
-                    return ValidationProblemFactory.CreateValidationProblem("NotFound", "Role Not Found");
+                    return TypedResults.NotFound();
 
                 var result = await roleManager.DeleteAsync(role);
                 if(!result.Succeeded)
-                    return result.CreateValidationProblem();
+                    return result.CreatePublicError();
 
                 return TypedResults.Ok();
-            });
+            }).Produces(StatusCodes.Status200OK)
+              .Produces(StatusCodes.Status404NotFound)
+              .ProducesValidationProblem(StatusCodes.Status400BadRequest);
 
             return endpoints;
         }
