@@ -96,6 +96,76 @@ namespace RuntimeApps.Authentication.Test {
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         }
 
+        [Theory]
+        [InlineData("DuplicateEmail")]
+        [InlineData("DuplicateUserName")]
+        public async Task Register_ConcurrentDuplicateIdentifier_ReturnsGenericAcceptedContract(string code) {
+            var userManager = new Mock<IUserManager<IdentityUser>>();
+            var emailManager = new Mock<IUserEmailManager<IdentityUser>>();
+            var workflow = new Mock<IVerificationWorkflowService<IdentityUser, string>>();
+            var account = new Mock<IUserAccountService<IdentityUser>>();
+            var user = new IdentityUser { Email = "new@example.com", UserName = "new-user" };
+            emailManager.Setup(manager => manager.FindByEmailAsync(user.Email)).ReturnsAsync((IdentityUser)null);
+            userManager.Setup(manager => manager.CreateAsync(user, "StrongPassword!1"))
+                .ReturnsAsync(IdentityResult.Failed(new IdentityError { Code = code, Description = "Sensitive identity detail" }));
+
+            var service = CreateService(userManager, emailManager, workflow, account);
+            var result = await service.RegisterAsync(user, "StrongPassword!1");
+
+            Assert.True(result.Succeeded);
+            Assert.NotNull(result.Data);
+            Assert.False(string.IsNullOrWhiteSpace(result.Data.Message));
+            Assert.False(string.IsNullOrWhiteSpace(result.Data.VerificationHandle));
+            Assert.DoesNotContain("Sensitive identity detail", result.Errors?.Select(error => error.Description) ?? Array.Empty<string>());
+            workflow.Verify(item => item.StartAsync(
+                It.IsAny<IdentityUser>(), It.IsAny<VerificationPurpose>(), It.IsAny<VerificationChannel>(),
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Register_CancellationBeforeCreateDoesNotPersistUser() {
+            var userManager = new Mock<IUserManager<IdentityUser>>();
+            var emailManager = new Mock<IUserEmailManager<IdentityUser>>();
+            var workflow = new Mock<IVerificationWorkflowService<IdentityUser, string>>();
+            var account = new Mock<IUserAccountService<IdentityUser>>();
+            using var cancellation = new CancellationTokenSource();
+            cancellation.Cancel();
+
+            var service = CreateService(userManager, emailManager, workflow, account);
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.RegisterAsync(
+                new IdentityUser { Email = "new@example.com" }, "StrongPassword!1", cancellation.Token));
+
+            userManager.Verify(manager => manager.CreateAsync(It.IsAny<IdentityUser>(), It.IsAny<string>()), Times.Never);
+            workflow.Verify(item => item.StartAsync(
+                It.IsAny<IdentityUser>(), It.IsAny<VerificationPurpose>(), It.IsAny<VerificationChannel>(),
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Register_CancellationDuringVerificationLeavesOnlyPendingUnconfirmedUser() {
+            var userManager = new Mock<IUserManager<IdentityUser>>();
+            var emailManager = new Mock<IUserEmailManager<IdentityUser>>();
+            var workflow = new Mock<IVerificationWorkflowService<IdentityUser, string>>();
+            var account = new Mock<IUserAccountService<IdentityUser>>();
+            using var cancellation = new CancellationTokenSource();
+            var user = new IdentityUser { Email = "new@example.com", UserName = "new@example.com" };
+            emailManager.Setup(manager => manager.FindByEmailAsync(user.Email)).ReturnsAsync((IdentityUser)null);
+            userManager.Setup(manager => manager.CreateAsync(user, "StrongPassword!1")).ReturnsAsync(IdentityResult.Success);
+            workflow.Setup(service => service.StartAsync(
+                    user, VerificationPurpose.Registration, VerificationChannel.Email, user.Email,
+                    null, null, It.IsAny<CancellationToken>()))
+                .Callback(() => cancellation.Cancel())
+                .ThrowsAsync(new OperationCanceledException(cancellation.Token));
+
+            var service = CreateService(userManager, emailManager, workflow, account);
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                service.RegisterAsync(user, "StrongPassword!1", cancellation.Token));
+
+            Assert.False(user.EmailConfirmed);
+            userManager.Verify(manager => manager.CreateAsync(user, "StrongPassword!1"), Times.Once);
+            account.Verify(manager => manager.CompleteRegistrationAsync(It.IsAny<IdentityUser>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
         private static RegistrationService<IdentityUser, string> CreateService(
             Mock<IUserManager<IdentityUser>> userManager,
             Mock<IUserEmailManager<IdentityUser>> emailManager,

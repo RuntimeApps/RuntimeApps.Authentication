@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using RuntimeApps.Authentication.Endpoints.Account;
 using RuntimeApps.Authentication.Features.Account.Contracts;
+using RuntimeApps.Authentication.Features.Account.Models;
 using RuntimeApps.Authentication.Features.Registration.Contracts;
 using RuntimeApps.Authentication.Features.Verification.Contracts;
 using RuntimeApps.Authentication.Identity.Contracts;
@@ -24,6 +25,18 @@ public sealed class FeatureEndpointMappingTest {
         var endpoint = Assert.Single(Endpoints(host));
         Assert.Equal("api/auth/login", ((RouteEndpoint)endpoint).RoutePattern.RawText);
         Assert.IsAssignableFrom<IAllowAnonymous>(endpoint.Metadata.GetMetadata<IAllowAnonymous>());
+    }
+
+    [Fact]
+    public void AuthenticationMetadata_DeclaresTokenFreeTwoFactorContinuation() {
+        using var host = CreateHost(includeVerificationDependencies: false);
+        host.Endpoints.MapAuthenticationApi<IdentityUser<int>, TestUserDto, int>();
+
+        var login = Assert.Single(Endpoints(host).OfType<RouteEndpoint>());
+        var accepted = Assert.Single(login.Metadata.GetOrderedMetadata<Microsoft.AspNetCore.Http.Metadata.IProducesResponseTypeMetadata>()
+            .Where(metadata => metadata.StatusCode == StatusCodes.Status202Accepted));
+        Assert.Equal(typeof(AuthenticationContinuationResponse), accepted.Type);
+        Assert.DoesNotContain(typeof(RuntimeApps.Authentication.Shared.Models.Token).Name, accepted.Type!.GetProperties().Select(property => property.Name));
     }
 
     [Fact]

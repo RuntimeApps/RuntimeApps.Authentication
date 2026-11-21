@@ -28,6 +28,12 @@ Protect personal data | Protect personal user data in database by encrypt user d
 
 ## Getting Started
 
+### Request body contracts
+
+Role assignment routes accept a named request object such as `{ "roles": ["Admin"] }` rather than a bare string array. Bulk user-claim routes accept `{ "claims": [{ "type": "department", "value": "finance" }] }`. Role create and update routes accept `{ "role": { ... } }`; the nested role payload uses the consumer's configured role type so custom role fields remain available. These request shapes are versioned API changes for clients of those routes. Single-claim requests continue to use the named `ClaimDto` body, and the authentication, registration, verification, and password routes use named request DTOs.
+
+An external identity with an untrusted email claim is rejected with the same generic authentication failure whether that email matches an existing account or not. An existing account is linked only when the configured email trust policy approves the provider claim. Identity operations do not expose cancellation overloads; endpoint handlers check request cancellation before starting them and finish in-flight writes. Identity provides no transaction spanning user creation and external-login linking, so if linking fails after creation the valid account remains; retrying with the same trusted provider can link it. The service does not delete or unlink records that a concurrent operation may already be using.
+
 `IUserManager<TUser>` provides user lookup, create, update, delete, and principal lookup operations. For services that need specific capabilities, inject focused contracts such as `IUserPasswordManager<TUser>`, `IUserEmailManager<TUser>`, `IUserRoleManager<TUser>`, or `IUserClaimManager<TUser>`. `AddRuntimeAppsAuthentication<TUser, TRole, TKey>()` registers these contracts to the same scoped `RuntimeAppsUserManager<TUser>` instance. The concrete manager remains customizable: derive from `RuntimeAppsUserManager<TUser>` and register it with `.AddUserManager<YourUserManager>()` after calling `AddRuntimeAppsAuthentication`. A manager registered directly as `UserManager<TUser>` before the builder must also derive from `RuntimeAppsUserManager<TUser>` to share the focused interfaces.
 
 To use this library do the steps:

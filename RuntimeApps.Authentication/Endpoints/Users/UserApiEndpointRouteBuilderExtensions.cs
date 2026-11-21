@@ -10,14 +10,18 @@ namespace RuntimeApps.Authentication.Endpoints.Users {
             where TUserDto : class {
             var routeGroup = endpoints.MapGroup("");
 
-            routeGroup.MapGet("{userId}", async Task<IResult> ([FromRoute] string userId, IUserManager<TUser> userManager, [FromServices] IUserMapper<TUser, TUserDto> mapper) => {
+            routeGroup.MapGet("{userId}", async Task<IResult> ([FromRoute] string userId, IUserManager<TUser> userManager, [FromServices] IUserMapper<TUser, TUserDto> mapper, CancellationToken cancellationToken) => {
+                cancellationToken.ThrowIfCancellationRequested();
                 var user = await userManager.FindByIdAsync(userId);
+                cancellationToken.ThrowIfCancellationRequested();
                 return user != default ? TypedResults.Ok(mapper.ToDto(user)) : TypedResults.NotFound();
             }).Produces<TUserDto>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound);
 
-            routeGroup.MapGet("/", async Task<IResult> ([FromQuery] string userName, IUserManager<TUser> userManager, [FromServices] IUserMapper<TUser, TUserDto> mapper) => {
+            routeGroup.MapGet("/", async Task<IResult> ([FromQuery] string userName, IUserManager<TUser> userManager, [FromServices] IUserMapper<TUser, TUserDto> mapper, CancellationToken cancellationToken) => {
+                cancellationToken.ThrowIfCancellationRequested();
                 var user = await userManager.FindByNameAsync(userName);
+                cancellationToken.ThrowIfCancellationRequested();
                 return user != default ? TypedResults.Ok(mapper.ToDto(user)) : TypedResults.NotFound();
             }).Produces<TUserDto>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound);

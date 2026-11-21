@@ -2,6 +2,10 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
 
 namespace RuntimeApps.Authentication.Identity.Contracts {
+    /// <remarks>
+    /// Identity role manager operations do not expose cancellation overloads. Endpoint handlers
+    /// check cancellation before starting these calls and allow an in-flight write to complete.
+    /// </remarks>
     public interface IRoleManager<TRole>: IDisposable where TRole : class {
         IQueryable<TRole> Roles { get; }
         Task<IdentityResult> CreateAsync(TRole role);

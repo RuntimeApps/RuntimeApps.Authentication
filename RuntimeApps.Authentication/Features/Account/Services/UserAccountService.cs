@@ -71,43 +71,49 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
             cancellationToken.ThrowIfCancellationRequested();
             var provider = _externalLoginProviders.FirstOrDefault(p => string.Equals(p.Provider, providerName, StringComparison.OrdinalIgnoreCase));
             if(provider == null)
-                return new Result<TUser, Token>(ResultCode.BadRequest, Result.CreateErrors("Unknown provider", "Provider is not added to system"));
+                return ExternalAuthenticationFailed();
 
             var providerResult = await provider.ValidateAsync(token, cancellationToken);
             if(providerResult?.LoginInfo == null || providerResult.User == null)
-                return new Result<TUser, Token>(ResultCode.BadRequest, Result.CreateErrors("Invalid token", "Invalid External Authentication."));
+                return ExternalAuthenticationFailed();
 
+            cancellationToken.ThrowIfCancellationRequested();
             var loginInfo = providerResult.LoginInfo;
             // Identity manager/store APIs used below have no CancellationToken overloads.
             var user = await _loginManager.FindByLoginAsync(loginInfo.LoginProvider, loginInfo.ProviderKey);
             cancellationToken.ThrowIfCancellationRequested();
             if(user == null) {
                 var trustedEmail = _externalLoginEmailTrustPolicy?.IsEmailTrusted(provider.Provider, providerResult) == true;
+                // Do not look up an untrusted email and branch on whether it belongs to an
+                // account. Reject the same untrusted identity before either account path.
+                if((!string.IsNullOrWhiteSpace(providerResult.Email) && !trustedEmail) ||
+                   (_verificationOptions.RequireEmailVerificationForExternalLogins && !trustedEmail))
+                    return ExternalAuthenticationFailed();
+
                 var existingEmailUser = string.IsNullOrWhiteSpace(providerResult.Email)
                     ? null
                     : await _emailManager.FindByEmailAsync(providerResult.Email);
                 cancellationToken.ThrowIfCancellationRequested();
 
                 if(existingEmailUser != null) {
-                    // Never link an external identity to an existing account based on an unverified email.
-                    if(!trustedEmail)
-                        return new Result<TUser, Token>(
-                            ResultCode.Conflict,
-                            Result.CreateErrors("ExternalAccountLinkRequired", "Sign in to the existing account before linking this external provider."));
-
                     user = existingEmailUser;
-                    if(!user.EmailConfirmed) {
+                    var wasEmailConfirmed = user.EmailConfirmed;
+                    // Link first. If the subsequent confirmation update fails, undo the link.
+                    var addLoginResult = await _loginManager.AddLoginAsync(user, loginInfo);
+                    if(!addLoginResult.Succeeded)
+                        return ExternalAuthenticationFailed();
+
+                    if(!wasEmailConfirmed) {
                         user.EmailConfirmed = true;
                         var updateResult = await _userManager.UpdateAsync(user);
-                        cancellationToken.ThrowIfCancellationRequested();
-                        if(!updateResult.Succeeded)
-                            return new Result<TUser, Token>(ResultCode.BadRequest, updateResult.Errors);
+                        if(!updateResult.Succeeded) {
+                            user.EmailConfirmed = wasEmailConfirmed;
+                            // The link is a complete, trusted Identity association. Keep it
+                            // retryable if confirmation persistence fails instead of racing a
+                            // concurrent login by compensating with RemoveLoginAsync.
+                            return ExternalAuthenticationFailed();
+                        }
                     }
-
-                    var addLoginResult = await _loginManager.AddLoginAsync(user, loginInfo);
-                    cancellationToken.ThrowIfCancellationRequested();
-                    if(!addLoginResult.Succeeded)
-                        return new Result<TUser, Token>(ResultCode.BadRequest, addLoginResult.Errors);
                 } else {
                     user = providerResult.User;
                     if(string.IsNullOrWhiteSpace(user.Email))
@@ -119,32 +125,34 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
                     user.EmailConfirmed = trustedEmail;
 
                     var createResult = await _userManager.CreateAsync(user);
-                    cancellationToken.ThrowIfCancellationRequested();
                     if(!createResult.Succeeded)
-                        return new Result<TUser, Token>(ResultCode.BadRequest, createResult.Errors);
+                        return ExternalAuthenticationFailed();
 
                     var addLoginResult = await _loginManager.AddLoginAsync(user, loginInfo);
-                    cancellationToken.ThrowIfCancellationRequested();
                     if(!addLoginResult.Succeeded)
-                        return new Result<TUser, Token>(ResultCode.BadRequest, addLoginResult.Errors);
+                        // Identity exposes no transaction spanning user creation and external
+                        // login linking. Leave the valid account in place: the same trusted
+                        // provider retry can find it and attach the login. Deleting it here
+                        // could race another operation that has already started using it.
+                        return ExternalAuthenticationFailed();
                 }
             }
 
             if(user == null)
-                return new Result<TUser, Token>(ResultCode.BadRequest, Result.CreateErrors("Add_Error", "User cannot added"));
+                return ExternalAuthenticationFailed();
+
+            // The non-cancellable Identity writes above are now consistent. Honor cancellation
+            // before sending verification or issuing an authentication session.
+            cancellationToken.ThrowIfCancellationRequested();
 
             if(_verificationOptions.RequireEmailVerificationForExternalLogins && !user.EmailConfirmed) {
                 if(string.IsNullOrWhiteSpace(user.Email) || _verificationWorkflow == null)
-                    return new Result<TUser, Token>(
-                        ResultCode.Forbidden,
-                        Result.CreateErrors("EmailVerificationRequired", "Email verification is required but no verified email address or verification workflow is available."));
+                    return ExternalAuthenticationFailed();
 
                 var verification = await _verificationWorkflow.StartAsync(
                     user, VerificationPurpose.Registration, VerificationChannel.Email, user.Email, cancellationToken: cancellationToken);
                 if(!verification.Succeeded)
-                    return new Result<TUser, Token>(
-                        ResultCode.Forbidden,
-                        Result.CreateErrors(verification.ErrorCode, verification.ErrorDescription));
+                    return ExternalAuthenticationFailed();
 
                 return new Result<TUser, Token>(user, new Token {
                     VerificationRequired = true,
@@ -155,6 +163,10 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
 
             return await GenerateTokenAsync(user, cancellationToken);
         }
+
+        private static Result<TUser, Token> ExternalAuthenticationFailed() =>
+            new(ResultCode.BadRequest, Result.CreateErrors(
+                "ExternalAuthenticationFailed", "External authentication could not be completed."));
 
         /// <remarks>Identity lookup and password sign-in abstractions in ASP.NET Core do not expose cancellation overloads.</remarks>
         public virtual async Task<Result<TUser, Token>> LoginAsync(string userName, string password, CancellationToken cancellationToken = default) {

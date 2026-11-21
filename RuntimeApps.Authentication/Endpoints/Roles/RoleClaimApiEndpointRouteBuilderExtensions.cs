@@ -12,12 +12,15 @@ namespace RuntimeApps.Authentication.Endpoints.Roles {
             where TRole : class {
             var routeGroup = endpoints.MapGroup("");
 
-            routeGroup.MapGet("{roleId}/Claim", async Task<IResult> ([FromRoute] string roleId, IRoleManager<TRole> roleManager, HttpContext httpContext) => {
+            routeGroup.MapGet("{roleId}/Claim", async Task<IResult> ([FromRoute] string roleId, IRoleManager<TRole> roleManager, CancellationToken cancellationToken) => {
+                cancellationToken.ThrowIfCancellationRequested();
                 var role = await roleManager.FindByIdAsync(roleId);
                 if(role == null)
                     return RoleNotFound();
 
+                cancellationToken.ThrowIfCancellationRequested();
                 var result = await roleManager.GetClaimsAsync(role);
+                cancellationToken.ThrowIfCancellationRequested();
                 return TypedResults.Ok<IEnumerable<ClaimDto>>(result.Select(c => new ClaimDto(c)));
             }).Produces<IEnumerable<ClaimDto>>(StatusCodes.Status200OK).Produces(StatusCodes.Status404NotFound);
 
@@ -28,11 +31,15 @@ namespace RuntimeApps.Authentication.Endpoints.Roles {
             where TRole : class {
             var routeGroup = endpoints.MapGroup("");
 
-            routeGroup.MapPost("{roleId}/Claim", async Task<IResult> ([FromRoute] string roleId, [FromBody] ClaimDto claim, IRoleManager<TRole> roleManager, HttpContext httpContext) => {
+            routeGroup.MapPost("{roleId}/Claim", async Task<IResult> ([FromRoute] string roleId, [FromBody] ClaimDto claim, IRoleManager<TRole> roleManager, CancellationToken cancellationToken) => {
+                if(!IsValidClaim(claim))
+                    return ValidationProblemFactory.CreateValidationProblem("InvalidClaim", "Claim type and value are required.");
+                cancellationToken.ThrowIfCancellationRequested();
                 var role = await roleManager.FindByIdAsync(roleId);
                 if(role == null)
                     return RoleNotFound();
 
+                cancellationToken.ThrowIfCancellationRequested();
                 var result = await roleManager.AddClaimAsync(role, claim.ToClaim());
                 if(!result.Succeeded)
                     return result.CreatePublicError();
@@ -41,11 +48,15 @@ namespace RuntimeApps.Authentication.Endpoints.Roles {
             .ProducesValidationProblem(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status404NotFound);
 
-            routeGroup.MapDelete("{roleId}/Claim", async Task<IResult> ([FromRoute] string roleId, [FromBody] ClaimDto claim, IRoleManager<TRole> roleManager, HttpContext httpContext) => {
+            routeGroup.MapDelete("{roleId}/Claim", async Task<IResult> ([FromRoute] string roleId, [FromBody] ClaimDto claim, IRoleManager<TRole> roleManager, CancellationToken cancellationToken) => {
+                if(!IsValidClaim(claim))
+                    return ValidationProblemFactory.CreateValidationProblem("InvalidClaim", "Claim type and value are required.");
+                cancellationToken.ThrowIfCancellationRequested();
                 var role = await roleManager.FindByIdAsync(roleId);
                 if(role == null)
                     return RoleNotFound();
 
+                cancellationToken.ThrowIfCancellationRequested();
                 var result = await roleManager.RemoveClaimAsync(role, claim.ToClaim());
                 if(!result.Succeeded)
                     return result.CreatePublicError();
@@ -58,6 +69,9 @@ namespace RuntimeApps.Authentication.Endpoints.Roles {
         }
 
         private static IResult RoleNotFound() => TypedResults.NotFound();
+
+        private static bool IsValidClaim(ClaimDto claim) =>
+            claim != null && !string.IsNullOrWhiteSpace(claim.Type) && claim.Value != null;
 
     }
 }
