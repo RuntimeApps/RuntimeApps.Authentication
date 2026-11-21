@@ -3,12 +3,14 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Moq;
 using RuntimeApps.Authentication.DependencyInjection;
+using RuntimeApps.Authentication.Endpoints.RefreshTokens;
 using RuntimeApps.Authentication.Features.Account.Contracts;
 using RuntimeApps.Authentication.Features.Account.Models;
 using RuntimeApps.Authentication.Features.Account.Services;
@@ -183,6 +185,8 @@ public class AuthenticationSessionIssuerTest {
         Assert.False(services.Any(d => d.ServiceType == typeof(IAuthenticationSessionIssuer<IdentityUser>)));
         builder.AddCookieAuthenticationSessionIssuer();
         Assert.Single(services.Where(d => d.ServiceType == typeof(IAuthenticationSessionIssuer<IdentityUser>)));
+        Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IAuthenticationSessionIssuer<IdentityUser>) &&
+            descriptor.ImplementationType == typeof(CookieAuthenticationSessionIssuer<IdentityUser, string>));
         Assert.Throws<InvalidOperationException>(() => builder.AddJwtAuthenticationSessionIssuer());
     }
 
@@ -194,4 +198,30 @@ public class AuthenticationSessionIssuerTest {
         Assert.Contains(services, descriptor => descriptor.ServiceType == typeof(IAuthenticationSessionIssuer<IdentityUser>) &&
             descriptor.ImplementationType == typeof(JwtAuthenticationSessionIssuer<IdentityUser, string>));
     }
+
+    [Fact]
+    public void SessionIssuerMode_IsExplicitAndIndependentOfDefaultSignInScheme() {
+        var services = new ServiceCollection();
+        services.AddAuthentication(options => options.DefaultSignInScheme = "some-other-scheme");
+        var jwtIssuer = new JwtAuthenticationSessionIssuer<IdentityUser, string>(new Mock<IJwtProvider<IdentityUser>>().Object);
+        var cookieIssuer = new CookieAuthenticationSessionIssuer<IdentityUser, string>(
+            new Mock<IUserClaimsPrincipalFactory<IdentityUser>>().Object,
+            new HttpContextAccessor(), Options.Create(new CookieSessionOptions { Scheme = "app-cookie" }));
+
+        Assert.Equal(AuthenticationSessionMode.Jwt, jwtIssuer.Mode);
+        Assert.Equal(AuthenticationSessionMode.Cookie, cookieIssuer.Mode);
+        Assert.Equal("some-other-scheme", services.BuildServiceProvider()
+            .GetRequiredService<IOptions<Microsoft.AspNetCore.Authentication.AuthenticationOptions>>().Value.DefaultSignInScheme);
+    }
+
+    [Fact]
+    public void RefreshEndpoints_RequireExplicitIssuerRegistration() {
+        var builder = WebApplication.CreateBuilder();
+        using var app = builder.Build();
+
+        var error = Assert.Throws<InvalidOperationException>(() => app.MapRefreshTokenApi<IdentityUser, string>());
+
+        Assert.Contains("exactly one explicitly registered authentication session issuer", error.Message);
+    }
+
 }

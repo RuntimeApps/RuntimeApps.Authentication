@@ -9,6 +9,7 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
         where TUser : IdentityUser<TKey> where TKey : IEquatable<TKey> {
         private readonly IJwtProvider<TUser> _jwtProvider;
         private readonly IRefreshTokenService<TKey> _refreshTokens;
+        public AuthenticationSessionMode Mode => AuthenticationSessionMode.Jwt;
         public JwtAuthenticationSessionIssuer(IJwtProvider<TUser> jwtProvider, IRefreshTokenService<TKey> refreshTokens = null) {
             _jwtProvider = jwtProvider; _refreshTokens = refreshTokens;
         }

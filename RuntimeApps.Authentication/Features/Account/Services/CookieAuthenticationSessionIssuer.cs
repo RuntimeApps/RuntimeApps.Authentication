@@ -14,6 +14,7 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
         private readonly IUserClaimsPrincipalFactory<TUser> _principalFactory; private readonly IHttpContextAccessor _http;
         private readonly CookieSessionOptions _cookie; private readonly IRefreshTokenService<TKey> _refresh;
         private readonly RefreshTokenOptions _refreshOptions;
+        public AuthenticationSessionMode Mode => AuthenticationSessionMode.Cookie;
         public CookieAuthenticationSessionIssuer(IUserClaimsPrincipalFactory<TUser> principalFactory, IHttpContextAccessor http,
             IOptions<CookieSessionOptions> cookie, IRefreshTokenService<TKey> refresh = null, IOptions<RefreshTokenOptions> refreshOptions = null) {
             _principalFactory=principalFactory; _http=http; _cookie=cookie.Value; _refresh=refresh; _refreshOptions=refreshOptions?.Value ?? new();
