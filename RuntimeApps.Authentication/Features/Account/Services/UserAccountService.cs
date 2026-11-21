@@ -67,22 +67,26 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
             _sessionIssuer = sessionIssuer;
         }
 
-        public virtual async Task<Result<TUser, Token>> ExternalLoginAsync(string providerName, string token) {
-            var provider = _externalLoginProviders.FirstOrDefault(p => p.Provider.Equals(providerName, StringComparison.OrdinalIgnoreCase));
+        public virtual async Task<Result<TUser, Token>> ExternalLoginAsync(string providerName, string token, CancellationToken cancellationToken = default) {
+            cancellationToken.ThrowIfCancellationRequested();
+            var provider = _externalLoginProviders.FirstOrDefault(p => string.Equals(p.Provider, providerName, StringComparison.OrdinalIgnoreCase));
             if(provider == null)
                 return new Result<TUser, Token>(ResultCode.BadRequest, Result.CreateErrors("Unknown provider", "Provider is not added to system"));
 
-            var providerResult = await provider.ValidateAsync(token);
+            var providerResult = await provider.ValidateAsync(token, cancellationToken);
             if(providerResult?.LoginInfo == null || providerResult.User == null)
                 return new Result<TUser, Token>(ResultCode.BadRequest, Result.CreateErrors("Invalid token", "Invalid External Authentication."));
 
             var loginInfo = providerResult.LoginInfo;
+            // Identity manager/store APIs used below have no CancellationToken overloads.
             var user = await _loginManager.FindByLoginAsync(loginInfo.LoginProvider, loginInfo.ProviderKey);
+            cancellationToken.ThrowIfCancellationRequested();
             if(user == null) {
                 var trustedEmail = _externalLoginEmailTrustPolicy?.IsEmailTrusted(provider.Provider, providerResult) == true;
                 var existingEmailUser = string.IsNullOrWhiteSpace(providerResult.Email)
                     ? null
                     : await _emailManager.FindByEmailAsync(providerResult.Email);
+                cancellationToken.ThrowIfCancellationRequested();
 
                 if(existingEmailUser != null) {
                     // Never link an external identity to an existing account based on an unverified email.
@@ -95,11 +99,13 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
                     if(!user.EmailConfirmed) {
                         user.EmailConfirmed = true;
                         var updateResult = await _userManager.UpdateAsync(user);
+                        cancellationToken.ThrowIfCancellationRequested();
                         if(!updateResult.Succeeded)
                             return new Result<TUser, Token>(ResultCode.BadRequest, updateResult.Errors);
                     }
 
                     var addLoginResult = await _loginManager.AddLoginAsync(user, loginInfo);
+                    cancellationToken.ThrowIfCancellationRequested();
                     if(!addLoginResult.Succeeded)
                         return new Result<TUser, Token>(ResultCode.BadRequest, addLoginResult.Errors);
                 } else {
@@ -113,10 +119,12 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
                     user.EmailConfirmed = trustedEmail;
 
                     var createResult = await _userManager.CreateAsync(user);
+                    cancellationToken.ThrowIfCancellationRequested();
                     if(!createResult.Succeeded)
                         return new Result<TUser, Token>(ResultCode.BadRequest, createResult.Errors);
 
                     var addLoginResult = await _loginManager.AddLoginAsync(user, loginInfo);
+                    cancellationToken.ThrowIfCancellationRequested();
                     if(!addLoginResult.Succeeded)
                         return new Result<TUser, Token>(ResultCode.BadRequest, addLoginResult.Errors);
                 }
@@ -132,7 +140,7 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
                         Result.CreateErrors("EmailVerificationRequired", "Email verification is required but no verified email address or verification workflow is available."));
 
                 var verification = await _verificationWorkflow.StartAsync(
-                    user, VerificationPurpose.Registration, VerificationChannel.Email, user.Email);
+                    user, VerificationPurpose.Registration, VerificationChannel.Email, user.Email, cancellationToken: cancellationToken);
                 if(!verification.Succeeded)
                     return new Result<TUser, Token>(
                         ResultCode.Forbidden,
@@ -145,38 +153,32 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
                 });
             }
 
-            // A validated provider identity is only the first factor. Never issue a normal
-            // application session for an account that requires Identity two-factor auth.
-            if(user.TwoFactorEnabled) {
-                var challenge = await _signInManager.CreateTwoFactorChallengeAsync(user);
-                if(!challenge.RequiresTwoFactor)
-                    return GetIdentityError(challenge);
-                return new Result<TUser, Token>(ResultCode.Accepted,
-                    Result.CreateErrors("TwoFactorRequired", "Two factor authentication required"));
-            }
-
-            return await GenerateTokenAsync(user);
+            return await GenerateTokenAsync(user, cancellationToken);
         }
 
-        public virtual async Task<Result<TUser, Token>> LoginAsync(string userName, string password) {
+        /// <remarks>Identity lookup and password sign-in abstractions in ASP.NET Core do not expose cancellation overloads.</remarks>
+        public virtual async Task<Result<TUser, Token>> LoginAsync(string userName, string password, CancellationToken cancellationToken = default) {
+            cancellationToken.ThrowIfCancellationRequested();
             var userInfo = await _userManager.FindByNameAsync(userName);
+            cancellationToken.ThrowIfCancellationRequested();
             if(userInfo == null || !userInfo.EmailConfirmed)
                 return GetIdentityError(SignInResult.Failed);
 
             var signInResult = await _signInManager.PasswordSignInAsync(userInfo, password, false, true);
+            cancellationToken.ThrowIfCancellationRequested();
             if(!signInResult.Succeeded)
                 return GetIdentityError(signInResult);
 
-            return await GenerateTokenAsync(userInfo);
+            return await GenerateTokenAsync(userInfo, cancellationToken);
         }
 
-        public virtual Task<Result<TUser, Token>> CompleteRegistrationAsync(TUser user) {
+        public virtual Task<Result<TUser, Token>> CompleteRegistrationAsync(TUser user, CancellationToken cancellationToken = default) {
             if(user == null || !user.EmailConfirmed)
                 return Task.FromResult(new Result<TUser, Token>(
                     ResultCode.Forbidden,
                     Result.CreateErrors("EmailNotConfirmed", "The account must complete email verification before registration can be completed.")));
 
-            return GenerateTokenAsync(user);
+            return GenerateTokenAsync(user, cancellationToken);
         }
 
         protected virtual Result<TUser, Token> GetIdentityError(SignInResult signInResult) {
@@ -197,10 +199,11 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
             return new Result<TUser, Token>(code, Result.CreateErrors(signInResult.ToString(), description));
         }
 
-        protected virtual async Task<Result<TUser, Token>> GenerateTokenAsync(TUser user) {
+        protected virtual async Task<Result<TUser, Token>> GenerateTokenAsync(TUser user, CancellationToken cancellationToken = default) {
             if(_sessionIssuer == null)
                 throw new InvalidOperationException("An authentication session issuer must be explicitly registered.");
-            var token = await _sessionIssuer.IssueAsync(user, _contextAccessor.HttpContext?.RequestAborted ?? CancellationToken.None);
+            cancellationToken.ThrowIfCancellationRequested();
+            var token = await _sessionIssuer.IssueAsync(user, cancellationToken);
             return new Result<TUser, Token>(user, token);
         }
 

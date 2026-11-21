@@ -49,7 +49,7 @@ namespace RuntimeApps.Authentication.Test {
         [Fact]
         public void DataProtectionVerifier_BindsCodeToRequestAndDestination() {
             var services = new ServiceCollection();
-            services.AddDataProtection();
+            services.AddDataProtection().UseEphemeralDataProtectionProvider();
             using var provider = services.BuildServiceProvider();
             var verifier = new DataProtectionVerificationCodeVerifier<string>(
                 provider.GetRequiredService<IDataProtectionProvider>());

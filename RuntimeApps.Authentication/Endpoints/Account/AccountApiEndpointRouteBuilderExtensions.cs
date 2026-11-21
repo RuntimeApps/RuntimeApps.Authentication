@@ -28,16 +28,16 @@ namespace RuntimeApps.Authentication.Endpoints.Account {
 
             IEnumerable<IExternalLoginProvider<TUser>> externalLoginProviders = endpoints.ServiceProvider.GetServices<IExternalLoginProvider<TUser>>();
 
-            routeGroup.MapPost("login", async Task<Results<Ok<Result<TUserDto, Token>>, ValidationProblem>> ([FromBody] UserLoginModel userLoginModel, IUserAccountService<TUser> userAccountService, [FromServices] IUserMapper<TUser, TUserDto> mapper) => {
-                var result = await userAccountService.LoginAsync(userLoginModel.UserName, userLoginModel.Password);
+            routeGroup.MapPost("login", async Task<Results<Ok<Result<TUserDto, Token>>, ValidationProblem>> ([FromBody] UserLoginModel userLoginModel, IUserAccountService<TUser> userAccountService, [FromServices] IUserMapper<TUser, TUserDto> mapper, HttpContext context) => {
+                var result = await userAccountService.LoginAsync(userLoginModel.UserName, userLoginModel.Password, context.RequestAborted);
                 if(!result.Succeeded)
                     return result.CreateValidationProblem();
                 return TypedResults.Ok(MapResult<TUser, TUserDto, TKey>(result, mapper));
             });
 
             if(externalLoginProviders?.Any() == true) {
-                routeGroup.MapPost("login/external", async Task<Results<Ok<Result<TUserDto, Token>>, ValidationProblem>> ([FromBody] ExternalAuthModel request, IUserAccountService<TUser> userAccountService, [FromServices] IUserMapper<TUser, TUserDto> mapper) => {
-                    var result = await userAccountService.ExternalLoginAsync(request.Provider, request.Token);
+                routeGroup.MapPost("login/external", async Task<Results<Ok<Result<TUserDto, Token>>, ValidationProblem>> ([FromBody] ExternalAuthModel request, IUserAccountService<TUser> userAccountService, [FromServices] IUserMapper<TUser, TUserDto> mapper, HttpContext context) => {
+                    var result = await userAccountService.ExternalLoginAsync(request.Provider, request.Token, context.RequestAborted);
                     if(!result.Succeeded)
                         return result.CreateValidationProblem();
                     return TypedResults.Ok(MapResult<TUser, TUserDto, TKey>(result, mapper));

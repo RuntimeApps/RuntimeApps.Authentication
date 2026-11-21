@@ -10,6 +10,7 @@ using RuntimeApps.Authentication.Features.RefreshTokens.Contracts;
 using RuntimeApps.Authentication.Features.RefreshTokens.Models;
 using RuntimeApps.Authentication.Features.RefreshTokens.Services;
 using RuntimeApps.Authentication.Features.Verification.Models;
+using RuntimeApps.Authentication.Features.Account.Models;
 using RuntimeApps.Authentication.Identity.Contracts;
 namespace RuntimeApps.Authentication.Endpoints.RefreshTokens {
     public static class RefreshTokenApiEndpointRouteBuilderExtensions {
@@ -27,12 +28,14 @@ namespace RuntimeApps.Authentication.Endpoints.RefreshTokens {
                 IUserLockoutManager<TUser> lockoutManager,
                 IUserLoginManager<TUser> loginManager,
                 ISignInManager<TUser> signInManager,
+                IUserClaimsPrincipalFactory<TUser> principalFactory,
                 IRefreshTokenService<TKey> refreshTokenService,
                 IRefreshTokenRequestLimiter requestLimiter,
                 IServiceProvider services,
                 IAuthenticationSchemeProvider schemeProvider,
                 IAuthenticationHandlerProvider handlerProvider,
                 IOptions<RefreshTokenOptions> options,
+                IOptions<CookieSessionOptions> cookieOptions,
                 IOptions<VerificationOptions> verificationOptions) => {
                     if(!await requestLimiter.IsAllowedAsync(context, context.RequestAborted))
                         return Results.StatusCode(StatusCodes.Status429TooManyRequests);
@@ -70,7 +73,9 @@ namespace RuntimeApps.Authentication.Endpoints.RefreshTokens {
 
                     try {
                         if(isCookie) {
-                            await signInManager.SignInAsync(user, true);
+                            var principal = await principalFactory.CreateAsync(user);
+                            await context.SignInAsync(cookieOptions.Value.Scheme, principal,
+                                new AuthenticationProperties { IsPersistent = cookieOptions.Value.IsPersistent });
                             AppendRefreshCookie(context, options.Value, session.RefreshToken, session.ExpiresAt);
                             return Results.NoContent();
                         }
@@ -81,7 +86,7 @@ namespace RuntimeApps.Authentication.Endpoints.RefreshTokens {
                             return Results.Problem("JWT authentication is not configured.", statusCode: StatusCodes.Status500InternalServerError);
                         }
 
-                        var accessToken = await jwtProvider.GenerateTokenAsync(user);
+                        var accessToken = await jwtProvider.GenerateTokenAsync(user, context.RequestAborted);
                         accessToken.RefreshToken = session.RefreshToken;
                         accessToken.RefreshTokenExpireDate = session.ExpiresAt;
                         accessToken.SessionId = session.SessionId;

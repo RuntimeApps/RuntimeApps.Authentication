@@ -20,10 +20,12 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
             _jwtOption = options ?? throw new ArgumentNullException(nameof(options));
             _userClaimsPrincipalFactory = userClaimsPrincipalFactory ?? throw new ArgumentNullException(nameof(userClaimsPrincipalFactory));
         }
-        public async Task<Token> GenerateTokenAsync(TUser user) {
+        public async Task<Token> GenerateTokenAsync(TUser user, CancellationToken cancellationToken = default) {
+            cancellationToken.ThrowIfCancellationRequested();
             var credential = new SigningCredentials(_jwtOption.TokenValidationParameters.IssuerSigningKey, SecurityAlgorithms.HmacSha256);
 
             var claims = await _userClaimsPrincipalFactory.CreateAsync(user);
+            cancellationToken.ThrowIfCancellationRequested();
 
             DateTime expire = DateTime.UtcNow.Add(_jwtOption.RefreshInterval);
             var token = new JwtSecurityToken(_jwtOption.TokenValidationParameters.ValidIssuer, _jwtOption.TokenValidationParameters.ValidAudience,

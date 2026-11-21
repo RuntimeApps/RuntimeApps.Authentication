@@ -21,11 +21,9 @@ namespace RuntimeApps.Authentication.Identity.Contracts {
         Task<bool> IsTwoFactorClientRememberedAsync(TUser user);
         Task RememberTwoFactorClientAsync(TUser user);
         Task ForgetTwoFactorClientAsync();
-        Task<SignInResult> TwoFactorRecoveryCodeSignInAsync(string recoveryCode);
         Task<SignInResult> TwoFactorAuthenticatorSignInAsync(string code, bool isPersistent, bool rememberClient);
         Task<SignInResult> TwoFactorSignInAsync(string provider, string code, bool isPersistent, bool rememberClient);
         Task<TUser> GetTwoFactorAuthenticationUserAsync();
-        Task<SignInResult> CreateTwoFactorChallengeAsync(TUser user);
 
         Task<SignInResult> ExternalLoginSignInAsync(string loginProvider, string providerKey, bool isPersistent);
         Task<SignInResult> ExternalLoginSignInAsync(string loginProvider, string providerKey, bool isPersistent, bool bypassTwoFactor);

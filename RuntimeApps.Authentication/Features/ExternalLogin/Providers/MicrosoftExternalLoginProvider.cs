@@ -25,7 +25,8 @@ namespace RuntimeApps.Authentication.Features.ExternalLogin.Providers {
 
         public string Provider => "MICROSOFT";
 
-        public async Task<ExternalLoginProviderResult<TUser>> ValidateAsync(string token) {
+        public async Task<ExternalLoginProviderResult<TUser>> ValidateAsync(string token, CancellationToken cancellationToken = default) {
+            cancellationToken.ThrowIfCancellationRequested();
             var option = _options.Value;
             if(string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(option.ClientId) ||
                string.IsNullOrWhiteSpace(option.IssuerEndpoint) || string.IsNullOrWhiteSpace(option.ConfigurationAddress))
@@ -40,7 +41,7 @@ namespace RuntimeApps.Authentication.Features.ExternalLogin.Providers {
                 using var client = _httpClientFactory.CreateClient(nameof(MicrosoftExternalLoginProvider<TUser>));
                 var documentRetriever = new HttpDocumentRetriever(client) { RequireHttps = true };
                 var configuration = await OpenIdConnectConfigurationRetriever.GetAsync(
-                    metadataAddress, documentRetriever, CancellationToken.None);
+                    metadataAddress, documentRetriever, cancellationToken);
 
                 var handler = new JwtSecurityTokenHandler();
                 handler.ValidateToken(token, new TokenValidationParameters {
@@ -83,6 +84,8 @@ namespace RuntimeApps.Authentication.Features.ExternalLogin.Providers {
                     // Microsoft email claims are mutable and do not prove mailbox ownership.
                     EmailVerified = false
                 };
+            } catch(OperationCanceledException) {
+                throw;
             } catch(SecurityTokenException exception) {
                 _logger.LogWarning(
                     "Microsoft identity token validation failed. {ExceptionType}: {Reason}",

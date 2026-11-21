@@ -22,12 +22,26 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
             cancellationToken.ThrowIfCancellationRequested();
             var context = _http.HttpContext ?? throw new InvalidOperationException("An HTTP context is required to issue a cookie session.");
             var principal = await _principalFactory.CreateAsync(user);
+            cancellationToken.ThrowIfCancellationRequested();
+            RefreshTokenSession<TKey> session = null;
+            if(_refresh != null) {
+                session = await _refresh.CreateSessionAsync(user.Id, cancellationToken:cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                if(session == null)
+                    throw new InvalidOperationException("The refresh-token service did not create a session.");
+                var old = context.Request.Cookies[_refreshOptions.CookieName];
+                try {
+                    if(!string.IsNullOrEmpty(old)) await _refresh.RevokeAsync(old, cancellationToken);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await context.SignInAsync(_cookie.Scheme, principal, new AuthenticationProperties { IsPersistent = _cookie.IsPersistent });
+                } catch {
+                    await _refresh.RevokeAsync(session.RefreshToken, CancellationToken.None);
+                    throw;
+                }
+                context.Response.Cookies.Append(_refreshOptions.CookieName, session.RefreshToken, new CookieOptions { HttpOnly=true, Secure=_refreshOptions.CookieSecure, SameSite=_refreshOptions.CookieSameSite, Path=_refreshOptions.CookiePath, Expires=session.ExpiresAt });
+                return null;
+            }
             await context.SignInAsync(_cookie.Scheme, principal, new AuthenticationProperties { IsPersistent = _cookie.IsPersistent });
-            if(_refresh == null) return null;
-            var old=context.Request.Cookies[_refreshOptions.CookieName];
-            if(!string.IsNullOrEmpty(old)) await _refresh.RevokeAsync(old, cancellationToken);
-            var session=await _refresh.CreateSessionAsync(user.Id, cancellationToken:cancellationToken);
-            context.Response.Cookies.Append(_refreshOptions.CookieName, session.RefreshToken, new CookieOptions { HttpOnly=true, Secure=_refreshOptions.CookieSecure, SameSite=_refreshOptions.CookieSameSite, Path=_refreshOptions.CookiePath, Expires=session.ExpiresAt });
             return null;
         }
     }

@@ -111,7 +111,11 @@ Actions alone remain supported. Defaults are supplied by each options type; conf
 
 Session issuance is selected explicitly. `.UseJwt(...)` registers the JWT session issuer along with the JWT provider. For cookie applications, configure a cookie authentication scheme and add `.AddCookieAuthenticationSessionIssuer(options => options.IsPersistent = true)`; persistence defaults to `false`. Do not register both issuers for one user type. Refresh tokens remain opt-in through `.AddRefreshToken(...)`: JWT clients receive refresh token data in the response, while cookie clients receive an HttpOnly refresh-token cookie.
 
+Account operations, JWT creation, refresh-token operations, and external HTTP validation accept cancellation tokens where their dependencies support them. ASP.NET Core Identity user-store and sign-in APIs used for account lookup and credential checks do not expose cancellation-token overloads, so cancellation cannot interrupt those calls once started.
+
 Applications upgrading from earlier releases should add exactly one issuer registration. JWT applications using `.UseJwt(...)` receive the JWT issuer automatically. Cookie applications should add `.AddCookieAuthenticationSessionIssuer(...)` and ensure its configured scheme matches the cookie scheme registered with ASP.NET Core.
+
+Applications implementing `IUserAccountService<TUser>`, `IJwtProvider<TUser>`, or `IExternalLoginProvider<TUser>` directly should add the new optional cancellation-token parameter(s). Existing call sites can omit cancellation tokens; ASP.NET Core Identity calls that do not accept tokens remain non-cancellable once started.
 
 Registrations use `TryAdd` to preserve application-provided services. Store interfaces for a single store implementation resolve the same scoped store instance. Use `AddUserMapper` to replace the selected mapper; register custom store interfaces before `AddStores` to retain your implementations. Repeating feature registration appends options configuration in call order and does not duplicate default provider/service registrations.
 

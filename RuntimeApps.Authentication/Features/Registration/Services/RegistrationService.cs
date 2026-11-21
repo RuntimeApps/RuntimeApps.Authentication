@@ -89,7 +89,7 @@ namespace RuntimeApps.Authentication.Features.Registration.Services {
             if(!verificationResult.Succeeded)
                 return new Result<TUser, Token>(verificationResult.Code, verificationResult.Errors);
 
-            return await _accountService.CompleteRegistrationAsync(verificationResult.Data);
+            return await _accountService.CompleteRegistrationAsync(verificationResult.Data, cancellationToken);
         }
 
         public async Task<Result<RegistrationVerificationResponse>> ResendAsync(
