@@ -14,13 +14,15 @@ namespace RuntimeApps.Authentication.Endpoints.PasswordRecovery {
         /// <summary>
         /// Maps the optional password-recovery endpoints. Call this explicitly to expose them.
         /// </summary>
-        public static IEndpointRouteBuilder MapForgotPasswordApi<TUser, TKey>(
+        public static IEndpointRouteBuilder MapPasswordRecoveryApi<TUser, TKey>(
             this IEndpointRouteBuilder endpoints)
             where TUser : Microsoft.AspNetCore.Identity.IdentityUser<TKey>
             where TKey : IEquatable<TKey> {
             ArgumentNullException.ThrowIfNull(endpoints);
 
-            var availability = endpoints.ServiceProvider.GetRequiredService<IServiceProviderIsService>();
+            var availability = endpoints.ServiceProvider.GetService<IServiceProviderIsService>();
+            if(availability == null)
+                throw new InvalidOperationException("Password recovery endpoints require IServiceProviderIsService to validate their dependencies.");
             var requiredServices = new[] {
                 typeof(IForgotPasswordService<TUser, TKey>),
                 typeof(IForgotPasswordVerificationWorkflow<TUser, TKey>),
@@ -36,14 +38,14 @@ namespace RuntimeApps.Authentication.Endpoints.PasswordRecovery {
                     "a persistent verification request store, and a verification sender. Missing: " +
                     string.Join(", ", missing.Select(type => type.Name)));
 
-            var group = endpoints.MapGroup("");
+            var group = endpoints.MapGroup("").AllowAnonymous();
             group.MapPost("forgot-password", async Task<Ok<ForgotPasswordResponse>> (
                 [FromBody] ForgotPasswordRequestModel request,
                 IForgotPasswordService<TUser, TKey> service,
                 HttpContext httpContext) => {
                     var result = await service.RequestAsync(request?.Email, httpContext.RequestAborted);
                     return TypedResults.Ok(result);
-                }).WithName("ForgotPassword");
+                }).WithName("PasswordRecovery_Forgot").WithTags("Password recovery").WithSummary("Request a password reset");
 
             group.MapPost("reset-password", async Task<Results<Ok, ValidationProblem>> (
                 [FromBody] ResetPasswordModel request,
@@ -59,7 +61,7 @@ namespace RuntimeApps.Authentication.Endpoints.PasswordRecovery {
                     if(!result.Succeeded)
                         return result.CreateValidationProblem();
                     return TypedResults.Ok();
-                }).WithName("ResetPassword");
+                }).WithName("PasswordRecovery_Reset").WithTags("Password recovery").WithSummary("Reset a password");
 
             return endpoints;
         }

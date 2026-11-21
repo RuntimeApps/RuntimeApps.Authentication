@@ -98,11 +98,11 @@ app.UseAuthorization();
 
 app.MapGroup("api")
     .WithTags("Authentication APIs")
-    .MapLoginApi<IdentityUser<int>, IdentityUserDto<int>, int>();
+    .MapAuthenticationApi<IdentityUser<int>, IdentityUserDto<int>, int>();
 
 app.MapGroup("api/account")
     .WithTags("Account APIs")
-    .MapAccountApi<IdentityUser<int>, IdentityUserDto<int>, int>();
+    .MapAccountManagementApi<IdentityUser<int>, IdentityUserDto<int>, int>();
 
 app.MapGroup("api/user")
     .WithTags("User View")
@@ -117,7 +117,6 @@ app.MapGroup("api/role")
 app.MapGroup("api/user")
     .WithTags("User Manage")
     .RequireAuthorization(config => config.RequireRole(RoleConsts.UserManagerRole))
-    .MapRegisterApi<IdentityUser<int>, IdentityUserDto<int>, int>()
     .MapUserRoleGetApi<IdentityUser<int>>()
     .MapUserRoleManageApi<IdentityUser<int>>();
 

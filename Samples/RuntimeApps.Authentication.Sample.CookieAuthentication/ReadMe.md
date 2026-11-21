@@ -12,7 +12,7 @@ The sample enables refresh tokens explicitly with `AddRefreshToken()` and regist
 })
 ```
 
-The `MapLoginApi` extension automatically maps `POST /api/refresh`, `POST /api/logout`, and the authenticated `POST /api/logout/all` endpoints when refresh-token support is enabled. Cookie refresh credentials are stored in a Secure, HttpOnly cookie. For cross-origin clients, configure the exact allowed origins and review the application's CORS and CSRF policy.
+Map sessions explicitly with `app.MapGroup("api/session").MapSessionApi<IdentityUser<int>, int>()` after registering refresh-token support. Refresh and current-session logout use refresh-token credentials; logout-all requires an authenticated user. Cookie refresh credentials are stored in a Secure, HttpOnly cookie. For cross-origin clients, configure the exact allowed origins and review the application's CORS and CSRF policy.
 
 Each successful login creates an independent session. Refresh-token reuse revokes only the affected session family; logout-all revokes all sessions for the authenticated user.
 

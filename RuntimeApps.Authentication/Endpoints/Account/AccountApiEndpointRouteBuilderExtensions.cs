@@ -20,60 +20,45 @@ using RuntimeApps.Authentication.Shared.Extensions;
 using RuntimeApps.Authentication.Shared.Models;
 namespace RuntimeApps.Authentication.Endpoints.Account {
     public static class AccountApiEndpointRouteBuilderExtensions {
-        public static IEndpointRouteBuilder MapLoginApi<TUser, TUserDto, TKey>(this IEndpointRouteBuilder endpoints)
+        /// <summary>Maps login and configured external-login endpoints only.</summary>
+        public static IEndpointRouteBuilder MapAuthenticationApi<TUser, TUserDto, TKey>(this IEndpointRouteBuilder endpoints)
             where TUser : IdentityUser<TKey>
             where TUserDto : class
             where TKey : IEquatable<TKey> {
-            var routeGroup = endpoints.MapGroup("");
-
-            IEnumerable<IExternalLoginProvider<TUser>> externalLoginProviders = endpoints.ServiceProvider.GetServices<IExternalLoginProvider<TUser>>();
+            RequireServices(endpoints, "Authentication", typeof(IUserAccountService<TUser>), typeof(IUserMapper<TUser, TUserDto>));
+            var routeGroup = endpoints.MapGroup("").AllowAnonymous();
 
             routeGroup.MapPost("login", async Task<Results<Ok<Result<TUserDto, Token>>, ValidationProblem>> ([FromBody] UserLoginModel userLoginModel, IUserAccountService<TUser> userAccountService, [FromServices] IUserMapper<TUser, TUserDto> mapper, HttpContext context) => {
                 var result = await userAccountService.LoginAsync(userLoginModel.UserName, userLoginModel.Password, context.RequestAborted);
                 if(!result.Succeeded)
                     return result.CreateValidationProblem();
                 return TypedResults.Ok(MapResult<TUser, TUserDto, TKey>(result, mapper));
-            });
+            }).WithName("Authentication_Login").WithTags("Authentication").WithSummary("Log in");
 
-            if(externalLoginProviders?.Any() == true) {
+            if(endpoints.ServiceProvider.GetService<IServiceProviderIsService>()
+                ?.IsService(typeof(IExternalLoginProvider<TUser>)) == true) {
                 routeGroup.MapPost("login/external", async Task<Results<Ok<Result<TUserDto, Token>>, ValidationProblem>> ([FromBody] ExternalAuthModel request, IUserAccountService<TUser> userAccountService, [FromServices] IUserMapper<TUser, TUserDto> mapper, HttpContext context) => {
                     var result = await userAccountService.ExternalLoginAsync(request.Provider, request.Token, context.RequestAborted);
                     if(!result.Succeeded)
                         return result.CreateValidationProblem();
                     return TypedResults.Ok(MapResult<TUser, TUserDto, TKey>(result, mapper));
-                });
-            }
-
-            // Refresh endpoints are exposed only when AddRefreshToken() was used during registration.
-            if(endpoints.ServiceProvider.GetService<IServiceProviderIsService>()
-                ?.IsService(typeof(IRefreshTokenService<TKey>)) == true) {
-                endpoints.MapRefreshTokenApi<TUser, TKey>();
+                }).WithName("Authentication_ExternalLogin").WithTags("Authentication").WithSummary("Log in with an external provider");
             }
 
             return endpoints;
         }
 
-        public static IEndpointRouteBuilder MapRegisterApi<TUser, TUserDto, TKey>(this IEndpointRouteBuilder endpoints)
+        /// <summary>Maps the user-registration endpoint.</summary>
+        public static IEndpointRouteBuilder MapRegistrationApi<TUser, TUserDto, TKey>(this IEndpointRouteBuilder endpoints)
             where TUser : IdentityUser<TKey>, new()
             where TUserDto : class
             where TKey : IEquatable<TKey> {
-            var serviceAvailability = endpoints.ServiceProvider.GetRequiredService<IServiceProviderIsService>();
-            var requiredServices = new[] {
+            RequireServices(endpoints, "Registration",
                 typeof(IRegistrationService<TUser, TKey>),
-                typeof(IVerificationWorkflowService<TUser, TKey>),
-                typeof(IVerificationRequestStore<TKey>),
-                typeof(IVerificationSender<TUser, TKey>),
                 typeof(IUserAccountService<TUser>),
-                typeof(IUserMapper<TUser, TUserDto>)
-            };
-            var missingServices = requiredServices.Where(type => !serviceAvailability.IsService(type)).ToArray();
-            if(missingServices.Length > 0)
-                throw new InvalidOperationException(
-                    "Registration endpoints require verification services, a persistent verification request store, " +
-                    "a verification sender, an account service, and a user mapper. Missing: " +
-                    string.Join(", ", missingServices.Select(type => type.Name)));
+                typeof(IUserMapper<TUser, TUserDto>));
 
-            var routeGroup = endpoints.MapGroup("");
+            var routeGroup = endpoints.MapGroup("").AllowAnonymous();
 
             routeGroup.MapPost("register", async Task<Results<Accepted<Result<RegistrationVerificationResponse>>, ValidationProblem>> (
                 [FromBody] RegisterUserModel<TUserDto> user,
@@ -88,8 +73,18 @@ namespace RuntimeApps.Authentication.Endpoints.Account {
                     if(!result.Succeeded)
                         return result.CreateValidationProblem();
                     return TypedResults.Accepted((string)null, result);
-                });
+                }).WithName("Registration_Register").WithTags("Registration").WithSummary("Register a user");
 
+            return endpoints;
+        }
+
+        /// <summary>Maps registration verification and resend endpoints.</summary>
+        public static IEndpointRouteBuilder MapVerificationApi<TUser, TUserDto, TKey>(this IEndpointRouteBuilder endpoints)
+            where TUser : IdentityUser<TKey>, new()
+            where TUserDto : class
+            where TKey : IEquatable<TKey> {
+            RequireServices(endpoints, "Verification", typeof(IRegistrationService<TUser, TKey>), typeof(IUserMapper<TUser, TUserDto>), typeof(IVerificationWorkflowService<TUser, TKey>), typeof(IVerificationRequestStore<TKey>), typeof(IVerificationSender<TUser, TKey>));
+            var routeGroup = endpoints.MapGroup("").AllowAnonymous();
             routeGroup.MapPost("register/verify", async Task<Results<Ok<Result<TUserDto, Token>>, ValidationProblem>> (
                 [FromBody] VerifyRegistrationModel request,
                 IRegistrationService<TUser, TKey> registrationService,
@@ -103,7 +98,7 @@ namespace RuntimeApps.Authentication.Endpoints.Account {
                     if(!result.Succeeded)
                         return result.CreateValidationProblem();
                     return TypedResults.Ok(MapResult<TUser, TUserDto, TKey>(result, mapper));
-                });
+                }).WithName("Verification_VerifyRegistration").WithTags("Verification").WithSummary("Verify a registration");
 
             routeGroup.MapPost("register/resend", async Task<Results<Accepted<Result<RegistrationVerificationResponse>>, ValidationProblem>> (
                 [FromBody] ResendRegistrationVerificationModel request,
@@ -117,7 +112,7 @@ namespace RuntimeApps.Authentication.Endpoints.Account {
                     if(!result.Succeeded)
                         return result.CreateValidationProblem();
                     return TypedResults.Accepted((string)null, result);
-                });
+                }).WithName("Verification_ResendRegistration").WithTags("Verification").WithSummary("Resend registration verification");
 
             return endpoints;
         }
@@ -166,16 +161,18 @@ namespace RuntimeApps.Authentication.Endpoints.Account {
             return endpoints;
         }
 
-        public static IEndpointRouteBuilder MapAccountApi<TUser, TUserDto, TKey>(this IEndpointRouteBuilder endpoints)
+        /// <summary>Maps authenticated current-account and password-management endpoints.</summary>
+        public static IEndpointRouteBuilder MapAccountManagementApi<TUser, TUserDto, TKey>(this IEndpointRouteBuilder endpoints)
         where TUser : IdentityUser<TKey>
         where TUserDto : class
         where TKey : IEquatable<TKey> {
+            RequireServices(endpoints, "Account management", typeof(IUserManager<TUser>), typeof(IUserMapper<TUser, TUserDto>), typeof(IUserPasswordManager<TUser>));
             var authorizedRouteGroup = endpoints.MapGroup("").RequireAuthorization();
 
             authorizedRouteGroup.MapGet("/", async (IUserManager<TUser> userManager, HttpContext httpContext, IUserMapper<TUser, TUserDto> mapper) => {
                 var user = await userManager.GetUserAsync(httpContext.User);
                 return user != null ? mapper.ToDto(user) : null;
-            });
+            }).WithName("AccountManagement_Get").WithTags("Account management").WithSummary("Get the current account");
 
             authorizedRouteGroup.MapPost("password/change", async Task<Results<Ok, ValidationProblem>> ([FromBody] ChangePasswordModel input, IUserManager<TUser> userManager, IUserPasswordManager<TUser> passwordManager, HttpContext httpContext, IServiceProvider services) => {
                 var user = await userManager.GetUserAsync(httpContext.User);
@@ -191,7 +188,7 @@ namespace RuntimeApps.Authentication.Endpoints.Account {
                     await refreshTokenService.RevokeAllAsync(user.Id, httpContext.RequestAborted);
 
                 return TypedResults.Ok();
-            });
+            }).WithName("AccountManagement_ChangePassword").WithTags("Account management").WithSummary("Change the current password");
 
             authorizedRouteGroup.MapPost("password", async Task<Results<Ok, ValidationProblem>> ([FromBody] string password, IUserManager<TUser> userManager, IUserPasswordManager<TUser> passwordManager, HttpContext httpContext, IServiceProvider services) => {
                 var user = await userManager.GetUserAsync(httpContext.User);
@@ -207,9 +204,16 @@ namespace RuntimeApps.Authentication.Endpoints.Account {
                     await refreshTokenService.RevokeAllAsync(user.Id, httpContext.RequestAborted);
 
                 return TypedResults.Ok();
-            });
+            }).WithName("AccountManagement_AddPassword").WithTags("Account management").WithSummary("Add a password to the current account");
 
             return endpoints;
+        }
+
+        private static void RequireServices(IEndpointRouteBuilder endpoints, string feature, params Type[] services) {
+            var availability = endpoints.ServiceProvider.GetService<IServiceProviderIsService>();
+            var missing = availability == null ? services : services.Where(service => !availability.IsService(service)).ToArray();
+            if(missing.Length > 0)
+                throw new InvalidOperationException($"{feature} endpoints require these registered services: {string.Join(", ", missing.Select(service => service.Name))}.");
         }
 
         private static Result<TUserDto, Token> MapResult<TUser, TUserDto, TKey>(Result<TUser, Token> result, IUserMapper<TUser, TUserDto> mapper)

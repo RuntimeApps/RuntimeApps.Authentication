@@ -117,12 +117,11 @@ app.UseAuthorization();
 
 app.MapGroup("api")
     .WithTags("Authentication APIs")
-    .MapLoginApi<User, Role, int>()
-    .MapRegisterApi<User, Role, int>();
+    .MapAuthenticationApi<User, UserDto, int>();
 
 app.MapGroup("api/account")
     .WithTags("Account APIs")
-    .MapAccountApi<User, Role, int>();
+    .MapAccountManagementApi<User, UserDto, int>();
 
 app.MapControllerRoute(
     name: "default",

@@ -16,15 +16,16 @@ using RuntimeApps.Authentication.Identity.Contracts;
 namespace RuntimeApps.Authentication.Endpoints.RefreshTokens {
     public static class RefreshTokenApiEndpointRouteBuilderExtensions {
         /// <summary>
-        /// Maps refresh, current-session logout, and logout-all endpoints. This is called automatically
-        /// by MapLoginApi when AddRefreshToken has registered the refresh-token service.
+        /// Maps refresh, current-session logout, and logout-all endpoints.
         /// </summary>
-        public static IEndpointRouteBuilder MapRefreshTokenApi<TUser, TKey>(this IEndpointRouteBuilder endpoints)
+        public static IEndpointRouteBuilder MapSessionApi<TUser, TKey>(this IEndpointRouteBuilder endpoints)
             where TUser : IdentityUser<TKey>
             where TKey : IEquatable<TKey> {
-            if(endpoints.ServiceProvider.GetRequiredService<IServiceProviderIsService>()
-                .IsService(typeof(IAuthenticationSessionIssuer<TUser>)) != true)
-                throw new InvalidOperationException("Refresh-token endpoints require exactly one explicitly registered authentication session issuer.");
+            var availability = endpoints.ServiceProvider.GetService<IServiceProviderIsService>();
+            if(availability?.IsService(typeof(IRefreshTokenService<TKey>)) != true)
+                throw new InvalidOperationException("Session endpoints require the refresh-token service. Register refresh-token functionality first.");
+            if(availability.IsService(typeof(IAuthenticationSessionIssuer<TUser>)) != true)
+                throw new InvalidOperationException("Session endpoints require exactly one explicitly registered authentication session issuer.");
 
             var routes = endpoints.MapGroup("");
 
@@ -102,6 +103,9 @@ namespace RuntimeApps.Authentication.Endpoints.RefreshTokens {
                     }
                 })
             .Accepts<RefreshTokenRequest>(true, "application/json")
+            .AllowAnonymous()
+            .WithName("Session_Refresh")
+            .WithTags("Sessions")
             .WithSummary("Refresh the current session")
             .WithDescription("JWT clients send a RefreshTokenRequest JSON body. Cookie clients send the refresh-token cookie; the JSON body is optional for cookie authentication.");
 
@@ -128,6 +132,9 @@ namespace RuntimeApps.Authentication.Endpoints.RefreshTokens {
                     return Results.NoContent();
                 })
             .Accepts<RefreshTokenRequest>(true, "application/json")
+            .AllowAnonymous()
+            .WithName("Session_Logout")
+            .WithTags("Sessions")
             .WithSummary("Log out the current session")
             .WithDescription("JWT clients send a RefreshTokenRequest JSON body. Cookie clients send the refresh-token cookie; the JSON body is optional for cookie authentication.");
 
@@ -151,7 +158,7 @@ namespace RuntimeApps.Authentication.Endpoints.RefreshTokens {
                     if(isCookie)
                         DeleteRefreshCookie(context, options.Value);
                     return Results.NoContent();
-                }).RequireAuthorization();
+                }).RequireAuthorization().WithName("Session_LogoutAll").WithTags("Sessions").WithSummary("Log out all sessions");
 
             return endpoints;
         }

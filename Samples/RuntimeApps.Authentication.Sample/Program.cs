@@ -126,9 +126,10 @@ app.UseAuthorization();
 
 app.MapGroup("api")
     .WithTags("Authentication APIs")
-    .MapLoginApi<IdentityUser<int>, IdentityUserDto<int>, int>()
-    .MapRegisterApi<IdentityUser<int>, IdentityUserDto<int>, int>()
-    .MapForgotPasswordApi<IdentityUser<int>, int>();
+    .MapAuthenticationApi<IdentityUser<int>, IdentityUserDto<int>, int>()
+    .MapRegistrationApi<IdentityUser<int>, IdentityUserDto<int>, int>()
+    .MapVerificationApi<IdentityUser<int>, IdentityUserDto<int>, int>()
+    .MapPasswordRecoveryApi<IdentityUser<int>, int>();
 
 app.MapGroup("api")
     .WithTags("Administrator APIs")
@@ -136,7 +137,7 @@ app.MapGroup("api")
 
 app.MapGroup("api/account")
     .WithTags("Account APIs")
-    .MapAccountApi<IdentityUser<int>, IdentityUserDto<int>, int>();
+    .MapAccountManagementApi<IdentityUser<int>, IdentityUserDto<int>, int>();
 
 app.MapControllerRoute(
     name: "default",

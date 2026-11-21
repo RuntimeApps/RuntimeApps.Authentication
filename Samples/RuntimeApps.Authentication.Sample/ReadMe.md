@@ -95,9 +95,10 @@ By default a mapper registered with `AddUserMapper<TUserDto, TMapper>()` is scop
 Endpoint registration is unchanged apart from the DTO type argument, for example:
 
 ```cs
-app.MapGroup("api").MapLoginApi<IdentityUser, IdentityUserDto, string>()
-                   .MapRegisterApi<IdentityUser, IdentityUserDto, string>();
-app.MapGroup("api/account").MapAccountApi<IdentityUser, IdentityUserDto, string>();
+app.MapGroup("api").MapAuthenticationApi<IdentityUser, IdentityUserDto, string>()
+                   .MapRegistrationApi<IdentityUser, IdentityUserDto, string>();
+app.MapGroup("api").MapVerificationApi<IdentityUser, IdentityUserDto, string>();
+app.MapGroup("api/account").MapAccountManagementApi<IdentityUser, IdentityUserDto, string>();
 ```
 
 
@@ -153,7 +154,7 @@ The endpoint is mapped separately from the other authentication endpoints:
 
 \`\`\`cs
 app.MapGroup("api")
-    .MapForgotPasswordApi<IdentityUser<int>, int>();
+    .MapPasswordRecoveryApi<IdentityUser<int>, int>();
 \`\`\`
 
 The frontend receives the reset handle and token in the URL fragment, removes them from the address bar immediately, and submits them with the new password to \`POST /api/reset-password\`. Loading the frontend link does not consume the credential. In code mode, the API response supplies the handle and the email supplies the code. In link mode, the sender uses `context.CreateVerificationUrl(token)` to create the frontend reset link; no handle is returned in the API response.
