@@ -16,6 +16,10 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
             _jwtOption = options.Value;
             _userClaimsPrincipalFactory = userClaimsPrincipalFactory;
         }
+        public JwtProvider(JwtBearerOptions options, IUserClaimsPrincipalFactory<TUser> userClaimsPrincipalFactory) {
+            _jwtOption = options ?? throw new ArgumentNullException(nameof(options));
+            _userClaimsPrincipalFactory = userClaimsPrincipalFactory ?? throw new ArgumentNullException(nameof(userClaimsPrincipalFactory));
+        }
         public async Task<Token> GenerateTokenAsync(TUser user) {
             var credential = new SigningCredentials(_jwtOption.TokenValidationParameters.IssuerSigningKey, SecurityAlgorithms.HmacSha256);
 

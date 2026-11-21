@@ -54,22 +54,12 @@ Add required services to DI:
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddRuntimeAppsAuthentication<IdentityUser, IdentityRole, string>()
     .AddEfStores<ApplicationDbContext, IdentityUser, IdentityRole, string>()
-    .UseJwt(JwtBearerDefaults.AuthenticationScheme, option => {
-        SymmetricSecurityKey signingKey = new(Encoding.ASCII.GetBytes(builder.Configuration["Jwt:Key"]));
-        option.RequireHttpsMetadata = false;
-        option.SaveToken = true;
-        option.RefreshOnIssuerKeyNotFound = false;
-        option.TokenValidationParameters = new TokenValidationParameters {
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = signingKey,
-            ValidateIssuer = false,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidateAudience = true,
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-            ValidateLifetime = true,
-            ClockSkew = TimeSpan.Zero,
-            RequireExpirationTime = true,
-        };
+    .UseJwt(JwtBearerDefaults.AuthenticationScheme, builder.Configuration, option => {
+        var signingKey = builder.Configuration["Authentication:Jwt:SigningKey"]
+            ?? throw new InvalidOperationException("Set Authentication:Jwt:SigningKey in user secrets or an environment variable.");
+        option.TokenValidationParameters.IssuerSigningKey =
+            new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey));
+        option.SaveToken = true; // Overrides Authentication:Jwt:SaveToken.
     })
     .AddValidators();
 ```
@@ -98,6 +88,26 @@ app.MapGroup("api/account")
 You can add more services and customize services. Also, there are some [samples](./Samples/) in this repository.
 
 ## External Social Logins
+
+### Explicit feature registration and configuration
+
+`AddRuntimeAppsAuthentication<TUser, TRole, TKey>()` registers core Identity managers, the account service, and default user mappers only. Stores and optional features are registered explicitly. The existing `UseJwt`, `AddVerificationServices`, `AddForgotPassword`, `AddRefreshToken`, and provider methods remain available as fluent APIs.
+
+Option sections are `Authentication:Jwt` (the existing `JwtBearerOptions` type), `Authentication:Verification`, `Authentication:ForgotPassword`, `Authentication:RefreshTokens`, and `Authentication:ExternalLogin:Google|Facebook|Microsoft`. Each feature supports configuration binding followed by an action callback. The callback runs after binding, so explicitly assigned values win while untouched values remain from configuration:
+
+```cs
+.AddVerificationServices(builder.Configuration)
+.AddVerificationServices(options => options.CodeLength = 8)
+.AddForgotPassword(builder.Configuration)
+.AddRefreshToken(builder.Configuration, options => options.TokenLifetime = TimeSpan.FromDays(14))
+.UseJwt(JwtBearerDefaults.AuthenticationScheme, builder.Configuration, options => options.RequireHttpsMetadata = true)
+```
+
+The JWT overload binds `Authentication:Jwt` to the selected scheme only. For example, appsettings can hold `SaveToken`, `RefreshInterval`, and `TokenValidationParameters` (such as issuer and audience settings), while the callback can set an unbindable `IssuerSigningKey` from user secrets or an environment variable. Keep the signing key out of committed JSON. The callback overrides only the properties it assigns.
+
+Actions alone remain supported. Defaults are supplied by each options type; configuration binding runs before callbacks; standard Options post-configuration runs afterward; feature validation runs on application startup. External provider options bind JSON values while callbacks can set non-bindable mapper delegates. Keep credentials in user secrets, environment variables, or a secret manager.
+
+Registrations use `TryAdd` to preserve application-provided services. Store interfaces for a single store implementation resolve the same scoped store instance. Use `AddUserMapper` to replace the selected mapper; register custom store interfaces before `AddStores` to retain your implementations. Repeating feature registration appends options configuration in call order and does not duplicate default provider/service registrations.
 
 In many cases you want to add social login to your project, so users can quickly log in and use the application. External login needs to redirect the user to the social login pages which are not useful for API services. This repository provides an easy way to handle external login in ASP.Net core web API. You only should do:
 

@@ -40,15 +40,12 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     //Add default services of RuntimeApps application
     .AddRuntimeAppsAuthentication<IdentityUser<int>, IdentityRole<int>, int>()
+    .AddVerificationServices(builder.Configuration)
     .AddVerificationServices(options => {
+        // This code override takes precedence over Authentication:Verification:CodeLength.
         options.CodeLength = 6;
-        options.CodeLifetime = TimeSpan.FromMinutes(10);
-        options.MaximumFailedAttempts = 5;
-        options.ResendCooldown = TimeSpan.FromSeconds(60);
-        options.MaximumSendsPerHour = 5;
-        options.RequireEmailVerificationForExternalLogins = false;
     })
-    .AddForgotPassword(options => {
+    .AddForgotPassword(builder.Configuration, options => {
         // Choose Link and configure FrontendResetUrl to enable frontend-hosted reset links.
         options.Method = ForgotPasswordMethod.VerificationCode;
     })
@@ -57,44 +54,29 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     // Add default mapper between IdentityUser and IdentityUserDto
     .AddDefaultUserMapper<IdentityUserDto<int>>()
     //Add Jwt authentication serices to application
-    .UseJwt(JwtBearerDefaults.AuthenticationScheme, option => {
-        SymmetricSecurityKey signingKey = new(Encoding.ASCII.GetBytes(builder.Configuration["Jwt:Key"]));
-        option.RequireHttpsMetadata = false;
+    .UseJwt(JwtBearerDefaults.AuthenticationScheme, builder.Configuration, option => {
+        var jwtSigningKey = builder.Configuration["Authentication:Jwt:SigningKey"]
+            ?? throw new InvalidOperationException("Configure Authentication:Jwt:SigningKey through user secrets or an environment variable.");
+        SymmetricSecurityKey signingKey = new(Encoding.ASCII.GetBytes(jwtSigningKey));
+        // Overrides Authentication:Jwt:SaveToken while keeping the other bound values.
         option.SaveToken = true;
-        option.RefreshOnIssuerKeyNotFound = false;
-        option.RefreshInterval = TimeSpan.FromMinutes(int.Parse(builder.Configuration["Jwt:ExpireInMinute"]));
-        option.TokenValidationParameters = new TokenValidationParameters {
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = signingKey,
-            ValidateIssuer = false,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidateAudience = true,
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-            ValidateLifetime = true,
-            ClockSkew = TimeSpan.Zero,
-            RequireExpirationTime = true,
-        };
+        option.RequireHttpsMetadata = false;
+        option.TokenValidationParameters.IssuerSigningKey = signingKey;
     })
     //Add basic validations which is implemeted by ASP.Net core identity
     .AddValidators()
     //Add validator services of google authentication
-    .AddGoogleExternalLogin(option => {
-        option.ClientId = builder.Configuration["Authentication:Google:ClientId"];
-        option.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"];
+    .AddGoogleExternalLogin(builder.Configuration, option => {
         // Mapper of google model to user model
         option.Mapper = (data) => GoogleExternalLoginOption<IdentityUser<int>>.UserIdentityMapper<IdentityUser<int>, int>(data);
     })
     //Add validator services of facebook authentication
-    .AddFacebookExternalLogin(option => {
-        option.ClientId = builder.Configuration["Authentication:Facebook:AppId"];
-        option.ClientSecret = builder.Configuration["Authentication:Facebook:AppSecret"];
+    .AddFacebookExternalLogin(builder.Configuration, option => {
         // Mapper of facebook model to user model
         option.Mapper = (data) => FacebookExternalLoginOption<IdentityUser<int>>.UserIdentityMapper<IdentityUser<int>, int>(data);
     })
     //Add validator services of microsoft authentication
-    .AddMicrosoftExternalLogin(option => {
-        option.ClientId = builder.Configuration["Authentication:Microsoft:ClientId"];
-        option.ClientSecret = builder.Configuration["Authentication:Microsoft:ClientSecret"];
+    .AddMicrosoftExternalLogin(builder.Configuration, option => {
         // Mapper of microsot model to user model
         option.Mapper = (data) => MicrosoftExternalLoginOption<IdentityUser<int>>.UserIdentityMapper<IdentityUser<int>, int>(data);
     });
