@@ -54,23 +54,14 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     // Add default mapper between IdentityUser and IdentityUserDto
     .AddDefaultUserMapper<IdentityUserDto<int>>()
     //Add Jwt authentication serices to application
-    .UseJwt(JwtBearerDefaults.AuthenticationScheme, option => {
-        SymmetricSecurityKey signingKey = new(Encoding.ASCII.GetBytes(builder.Configuration["Jwt:Key"]));
-        option.RequireHttpsMetadata = false;
+    .UseJwt(JwtBearerDefaults.AuthenticationScheme, builder.Configuration, option => {
+        var jwtSigningKey = builder.Configuration["Authentication:Jwt:SigningKey"]
+            ?? throw new InvalidOperationException("Configure Authentication:Jwt:SigningKey through user secrets or an environment variable.");
+        SymmetricSecurityKey signingKey = new(Encoding.ASCII.GetBytes(jwtSigningKey));
+        // Overrides Authentication:Jwt:SaveToken while keeping the other bound values.
         option.SaveToken = true;
-        option.RefreshOnIssuerKeyNotFound = false;
-        option.RefreshInterval = TimeSpan.FromMinutes(int.Parse(builder.Configuration["Jwt:ExpireInMinute"]));
-        option.TokenValidationParameters = new TokenValidationParameters {
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = signingKey,
-            ValidateIssuer = false,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidateAudience = true,
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-            ValidateLifetime = true,
-            ClockSkew = TimeSpan.Zero,
-            RequireExpirationTime = true,
-        };
+        option.RequireHttpsMetadata = false;
+        option.TokenValidationParameters.IssuerSigningKey = signingKey;
     })
     //Add basic validations which is implemeted by ASP.Net core identity
     .AddValidators()

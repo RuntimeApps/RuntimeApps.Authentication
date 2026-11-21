@@ -54,22 +54,12 @@ Add required services to DI:
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddRuntimeAppsAuthentication<IdentityUser, IdentityRole, string>()
     .AddEfStores<ApplicationDbContext, IdentityUser, IdentityRole, string>()
-    .UseJwt(JwtBearerDefaults.AuthenticationScheme, option => {
-        SymmetricSecurityKey signingKey = new(Encoding.ASCII.GetBytes(builder.Configuration["Jwt:Key"]));
-        option.RequireHttpsMetadata = false;
-        option.SaveToken = true;
-        option.RefreshOnIssuerKeyNotFound = false;
-        option.TokenValidationParameters = new TokenValidationParameters {
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = signingKey,
-            ValidateIssuer = false,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidateAudience = true,
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-            ValidateLifetime = true,
-            ClockSkew = TimeSpan.Zero,
-            RequireExpirationTime = true,
-        };
+    .UseJwt(JwtBearerDefaults.AuthenticationScheme, builder.Configuration, option => {
+        var signingKey = builder.Configuration["Authentication:Jwt:SigningKey"]
+            ?? throw new InvalidOperationException("Set Authentication:Jwt:SigningKey in user secrets or an environment variable.");
+        option.TokenValidationParameters.IssuerSigningKey =
+            new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey));
+        option.SaveToken = true; // Overrides Authentication:Jwt:SaveToken.
     })
     .AddValidators();
 ```
@@ -112,6 +102,8 @@ Option sections are `Authentication:Jwt` (the existing `JwtBearerOptions` type),
 .AddRefreshToken(builder.Configuration, options => options.TokenLifetime = TimeSpan.FromDays(14))
 .UseJwt(JwtBearerDefaults.AuthenticationScheme, builder.Configuration, options => options.RequireHttpsMetadata = true)
 ```
+
+The JWT overload binds `Authentication:Jwt` to the selected scheme only. For example, appsettings can hold `SaveToken`, `RefreshInterval`, and `TokenValidationParameters` (such as issuer and audience settings), while the callback can set an unbindable `IssuerSigningKey` from user secrets or an environment variable. Keep the signing key out of committed JSON. The callback overrides only the properties it assigns.
 
 Actions alone remain supported. Defaults are supplied by each options type; configuration binding runs before callbacks; standard Options post-configuration runs afterward; feature validation runs on application startup. External provider options bind JSON values while callbacks can set non-bindable mapper delegates. Keep credentials in user secrets, environment variables, or a secret manager.
 

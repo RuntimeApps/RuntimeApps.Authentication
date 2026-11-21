@@ -185,6 +185,9 @@ ClientBindist
 ~$*
 *~
 *.dbmdl
+Samples/RuntimeApps.Authentication.Sample/authentication.db
+Samples/RuntimeApps.Authentication.Sample/authentication.db-shm
+Samples/RuntimeApps.Authentication.Sample/authentication.db-wal
 *.dbproj.schemaview
 *.pfx
 *.publishsettings

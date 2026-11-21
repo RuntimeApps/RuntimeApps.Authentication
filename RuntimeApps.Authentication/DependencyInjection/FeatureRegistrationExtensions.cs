@@ -82,10 +82,9 @@ namespace RuntimeApps.Authentication.DependencyInjection {
         public static RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> UseJwt<TUser, TRole, TKey>(this RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> builder, string scheme, Action<JwtBearerOptions> configure)
             where TUser : IdentityUser<TKey>, new() where TRole : IdentityRole<TKey> where TKey : IEquatable<TKey> {
             ArgumentNullException.ThrowIfNull(builder); ArgumentNullException.ThrowIfNull(configure);
-            builder.Services.TryAddScoped<IJwtProvider<TUser>, JwtProvider<TUser, TKey>>();
-            builder.Services.Configure(configure);
             builder.Services.AddOptions<JwtBearerOptions>(scheme).ValidateOnStart();
             builder.Authentication.AddJwtBearer(scheme, configure);
+            AddJwtProvider<TUser, TRole, TKey>(builder, scheme);
             return builder;
         }
 
@@ -93,17 +92,19 @@ namespace RuntimeApps.Authentication.DependencyInjection {
             where TUser : IdentityUser<TKey>, new() where TRole : IdentityRole<TKey> where TKey : IEquatable<TKey> {
             ArgumentNullException.ThrowIfNull(builder); ArgumentNullException.ThrowIfNull(configuration);
             const string section = "Authentication:Jwt";
-            builder.Services.TryAddScoped<IJwtProvider<TUser>, JwtProvider<TUser, TKey>>();
             builder.Authentication.AddJwtBearer(scheme);
             var schemeOptions = builder.Services.AddOptions<JwtBearerOptions>(scheme).Bind(configuration.GetSection(section));
-            builder.Services.Configure<JwtBearerOptions>(configuration.GetSection(section));
-            if (configure != null) {
-                builder.Services.Configure<JwtBearerOptions>(configure);
-                builder.Services.Configure<JwtBearerOptions>(scheme, configure);
-            }
+            if (configure != null) schemeOptions.Configure(configure);
             schemeOptions.ValidateOnStart();
+            AddJwtProvider<TUser, TRole, TKey>(builder, scheme);
             return builder;
         }
+
+        private static void AddJwtProvider<TUser, TRole, TKey>(RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> builder, string scheme)
+            where TUser : IdentityUser<TKey>, new() where TRole : IdentityRole<TKey> where TKey : IEquatable<TKey> =>
+            builder.Services.TryAddScoped<IJwtProvider<TUser>>(services => new JwtProvider<TUser, TKey>(
+                services.GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<JwtBearerOptions>>().Get(scheme),
+                services.GetRequiredService<Microsoft.AspNetCore.Identity.IUserClaimsPrincipalFactory<TUser>>()));
 
         private static RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddProvider<TUser, TRole, TKey, TOption, TProvider>(RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> b, IConfiguration c, Action<TOption> configure)
             where TUser : IdentityUser<TKey>, new() where TRole : IdentityRole<TKey> where TKey : IEquatable<TKey>
@@ -113,7 +114,7 @@ namespace RuntimeApps.Authentication.DependencyInjection {
             if (c != null) o.Bind(c.GetSection(TOptionSection<TOption>.Name));
             if (configure != null) o.Configure(configure);
             o.Validate(x => !string.IsNullOrWhiteSpace(x.ClientId) && !string.IsNullOrWhiteSpace(x.ClientSecret), "External login requires ClientId and ClientSecret.").ValidateOnStart();
-            b.Services.TryAddTransient<IExternalLoginProvider<TUser>, TProvider>();
+            b.Services.TryAddEnumerable(ServiceDescriptor.Transient<IExternalLoginProvider<TUser>, TProvider>());
             b.Services.TryAddScoped<IExternalLoginEmailTrustPolicy<TUser>, DefaultExternalLoginEmailTrustPolicy<TUser>>();
             return b;
         }
