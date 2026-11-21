@@ -79,12 +79,15 @@ Add endpoints (There are more endpoints in samples):
 ```cs
 app.MapGroup("api")
     .WithTags("Authentication APIs")
-    .MapLoginApi<IdentityUser, IdentityRole, string>()
-    .MapRegisterApi<IdentityUser, IdentityRole, string>();
+    .MapAuthenticationApi<IdentityUser, IdentityUserDto, string>()
+    .MapRegistrationApi<IdentityUser, IdentityUserDto, string>();
+
+app.MapGroup("api")
+    .MapVerificationApi<IdentityUser, IdentityUserDto, string>();
 
 app.MapGroup("api/account")
     .WithTags("Account APIs")
-    .MapAccountApi<IdentityUser, IdentityRole, string>();
+    .MapAccountManagementApi<IdentityUser, IdentityUserDto, string>();
 ```
 
 You can add more services and customize services. Also, there are some [samples](./Samples/) in this repository.
@@ -201,7 +204,7 @@ Create and apply an EF Core migration after adding the entity. The EF store requ
 
 ### Endpoints
 
-When `AddRefreshToken()` is registered, `MapLoginApi` also maps the following endpoints. The refresh endpoint is automatically rate-limited to 30 requests per minute per remote IP; configure `RefreshRequestsPerMinute` to change the limit. The limiter is in-process; multi-instance deployments should also enforce a shared limit at the gateway or through a distributed rate-limiting layer. When running behind a reverse proxy, configure trusted forwarded headers so the partition key reflects the actual client address. No additional rate-limiting middleware setup is required.
+Map sessions explicitly with `MapSessionApi<TUser, TKey>()` after registering `AddRefreshToken()`. The refresh endpoint is automatically rate-limited to 30 requests per minute per remote IP; configure `RefreshRequestsPerMinute` to change the limit. The limiter is in-process; multi-instance deployments should also enforce a shared limit at the gateway or through a distributed rate-limiting layer. When running behind a reverse proxy, configure trusted forwarded headers so the partition key reflects the actual client address. No additional rate-limiting middleware setup is required.
 
 | Endpoint | Behavior |
 | --- | --- |
@@ -299,7 +302,7 @@ This is a breaking major-version change. Remove calls to the old immediate-token
 
 ## Optional forgot-password API
 
-Password recovery is an optional feature. It reuses the verification-request store, protected verifier, sender, expiration, send limits, and one-time request consumption. It is not mapped by \`MapLoginApi\`, \`MapRegisterApi\`, or \`MapAccountApi\`; explicitly call \`MapForgotPasswordApi<TUser, TKey>()\` only when you want to expose it.
+Password recovery is an optional feature. It reuses the verification-request store, protected verifier, sender, expiration, send limits, and one-time request consumption. It is mapped independently with \`MapPasswordRecoveryApi<TUser, TKey>()\` when you want to expose it.
 
 Register the feature after \`AddVerificationServices()\`:
 
@@ -317,7 +320,7 @@ Register a persistent \`IVerificationRequestStore<TKey>\` and an \`IVerification
 
 \`\`\`cs
 app.MapGroup("api")
-    .MapForgotPasswordApi<IdentityUser<int>, int>();
+    .MapPasswordRecoveryApi<IdentityUser<int>, int>();
 \`\`\`
 
 The mapped endpoints are:

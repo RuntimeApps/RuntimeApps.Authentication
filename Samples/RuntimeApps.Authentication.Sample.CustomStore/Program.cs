@@ -70,12 +70,11 @@ app.UseAuthorization();
 
 app.MapGroup("api")
     .WithTags("Authentication APIs")
-    .MapLoginApi<IdentityUser, IdentityRole, string>()
-    .MapRegisterApi<IdentityUser, IdentityRole, string>();
+    .MapAuthenticationApi<IdentityUser, IdentityUserDto, string>();
 
 app.MapGroup("api/account")
     .WithTags("Account APIs")
-    .MapAccountApi<IdentityUser, IdentityRole, string>();
+    .MapAccountManagementApi<IdentityUser, IdentityUserDto, string>();
 
 app.MapControllerRoute(
     name: "default",

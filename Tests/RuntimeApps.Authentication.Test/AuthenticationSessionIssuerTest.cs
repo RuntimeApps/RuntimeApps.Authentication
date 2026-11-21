@@ -217,9 +217,10 @@ public class AuthenticationSessionIssuerTest {
     [Fact]
     public void RefreshEndpoints_RequireExplicitIssuerRegistration() {
         var builder = WebApplication.CreateBuilder();
+        builder.Services.AddSingleton<IRefreshTokenService<string>>(new Mock<IRefreshTokenService<string>>().Object);
         using var app = builder.Build();
 
-        var error = Assert.Throws<InvalidOperationException>(() => app.MapRefreshTokenApi<IdentityUser, string>());
+        var error = Assert.Throws<InvalidOperationException>(() => app.MapSessionApi<IdentityUser, string>());
 
         Assert.Contains("exactly one explicitly registered authentication session issuer", error.Message);
     }

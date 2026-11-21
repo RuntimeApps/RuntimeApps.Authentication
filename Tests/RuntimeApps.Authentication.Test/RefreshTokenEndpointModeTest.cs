@@ -183,7 +183,7 @@ public sealed class RefreshTokenEndpointModeTest {
 
         var serviceProvider = services.BuildServiceProvider();
         var endpoints = new TestEndpointRouteBuilder(serviceProvider);
-        endpoints.MapRefreshTokenApi<IdentityUser, string>();
+        endpoints.MapSessionApi<IdentityUser, string>();
         return new EndpointHost(serviceProvider, endpoints);
     }
 
