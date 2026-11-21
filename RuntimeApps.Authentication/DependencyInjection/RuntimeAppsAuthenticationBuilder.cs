@@ -36,8 +36,10 @@ namespace RuntimeApps.Authentication.DependencyInjection {
             Services.TryAddScoped<ITwoFactorSecurityStampValidator, TwoFactorSecurityStampValidator<TUser>>();
             Services.TryAddScoped<IUserClaimsPrincipalFactory<TUser>, UserClaimsPrincipalFactory<TUser, TRole>>();
             Services.TryAddScoped<IUserConfirmation<TUser>, DefaultUserConfirmation<TUser>>();
-            Services.TryAddScoped<UserManager<TUser>>();
-            Services.TryAddScoped<IUserManager<TUser>, RuntimeAppsUserManager<TUser>>();
+            Services.TryAddScoped<RuntimeAppsUserManager<TUser>>();
+            Services.Replace(ServiceDescriptor.Scoped<UserManager<TUser>>(sp => sp.GetRequiredService<RuntimeAppsUserManager<TUser>>()));
+            Services.TryAddScoped<IUserManager<TUser>>(sp => sp.GetRequiredService<RuntimeAppsUserManager<TUser>>());
+            AddUserManagerInterfaces();
             Services.TryAddScoped<SignInManager<TUser>>();
             Services.TryAddScoped<ISignInManager<TUser>, RuntimeAppsSignInManager<TUser>>();
             Services.TryAddScoped<RoleManager<TRole>>();
@@ -51,6 +53,26 @@ namespace RuntimeApps.Authentication.DependencyInjection {
             Services.Replace(ServiceDescriptor.Describe(typeof(IUserMapper<TUser, TUserDto>), typeof(TMapper), lifetime));
             return this;
         }
+
+        /// <summary>Uses a derived RuntimeApps user manager as the shared Identity manager instance.</summary>
+        public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddUserManager<TManager>() where TManager : RuntimeAppsUserManager<TUser> {
+            Services.Replace(ServiceDescriptor.Scoped<RuntimeAppsUserManager<TUser>>(sp => sp.GetRequiredService<TManager>()));
+            Services.TryAddScoped<TManager>();
+            Services.Replace(ServiceDescriptor.Scoped<UserManager<TUser>>(sp => sp.GetRequiredService<RuntimeAppsUserManager<TUser>>()));
+            Services.Replace(ServiceDescriptor.Scoped<IUserManager<TUser>>(sp => sp.GetRequiredService<RuntimeAppsUserManager<TUser>>()));
+            AddUserManagerInterfaces();
+            return this;
+        }
+
+        private void AddUserManagerInterfaces() {
+            AddUserManagerInterface<IUserPasswordManager<TUser>>();
+            AddUserManagerInterface<IUserEmailManager<TUser>>(); AddUserManagerInterface<IUserPhoneNumberManager<TUser>>();
+            AddUserManagerInterface<IUserLoginManager<TUser>>(); AddUserManagerInterface<IUserClaimManager<TUser>>();
+            AddUserManagerInterface<IUserRoleManager<TUser>>(); AddUserManagerInterface<IUserTwoFactorManager<TUser>>();
+            AddUserManagerInterface<IUserLockoutManager<TUser>>(); AddUserManagerInterface<IUserTokenManager<TUser>>();
+        }
+        private void AddUserManagerInterface<TInterface>() where TInterface : class =>
+            Services.TryAddScoped<TInterface>(sp => (TInterface)(object)sp.GetRequiredService<RuntimeAppsUserManager<TUser>>());
         public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddUserMapper<TUserDto>(Func<TUser, TUserDto> toDto, Func<TUserDto, TUser> toUser) where TUserDto : class {
             ArgumentNullException.ThrowIfNull(toDto); ArgumentNullException.ThrowIfNull(toUser);
             Services.Replace(ServiceDescriptor.Singleton<IUserMapper<TUser, TUserDto>>(new DelegateUserMapper<TUser, TUserDto>(toDto, toUser)));

@@ -85,8 +85,9 @@ if(app.Environment.IsDevelopment()) {
         try {
             var dbContext = services.GetRequiredService<ApplicationDbContext>();
             var userManager = services.GetRequiredService<IUserManager<IdentityUser<int>>>();
+            var userRoleManager = services.GetRequiredService<IUserRoleManager<IdentityUser<int>>>();
             var roleManager = services.GetRequiredService<IRoleManager<IdentityRole<int>>>();
-            DbInitializer.Initialize(dbContext, userManager, roleManager);
+            DbInitializer.Initialize(dbContext, userManager, userRoleManager, roleManager);
         } catch(Exception ex) {
             var logger = services.GetRequiredService<ILogger<Program>>();
             logger.LogError(ex, "An error occurred while seeding the database.");

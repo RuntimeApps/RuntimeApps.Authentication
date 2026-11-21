@@ -12,7 +12,8 @@ namespace RuntimeApps.Authentication.Features.PasswordRecovery.Services {
     public sealed class ForgotPasswordService<TUser, TKey> : IForgotPasswordService<TUser, TKey>
         where TUser : IdentityUser<TKey>
         where TKey : IEquatable<TKey> {
-        private readonly IUserManager<TUser> _userManager;
+        private readonly IUserEmailManager<TUser> _emailManager;
+        private readonly IUserPasswordManager<TUser> _passwordManager;
         private readonly UserManager<TUser> _identityUserManager;
         private readonly IForgotPasswordVerificationWorkflow<TUser, TKey> _verification;
         private readonly IRefreshTokenService<TKey> _refreshTokens;
@@ -21,14 +22,16 @@ namespace RuntimeApps.Authentication.Features.PasswordRecovery.Services {
         private readonly ForgotPasswordOptions _options;
 
         public ForgotPasswordService(
-            IUserManager<TUser> userManager,
+            IUserEmailManager<TUser> emailManager,
+            IUserPasswordManager<TUser> passwordManager,
             UserManager<TUser> identityUserManager,
             IForgotPasswordVerificationWorkflow<TUser, TKey> verification,
             IEnumerable<IPasswordValidator<TUser>> passwordValidators,
             IServiceProvider services,
             ILogger<ForgotPasswordService<TUser, TKey>> logger,
             IOptions<ForgotPasswordOptions> options) {
-            _userManager = userManager ?? throw new ArgumentNullException(nameof(userManager));
+            _emailManager = emailManager ?? throw new ArgumentNullException(nameof(emailManager));
+            _passwordManager = passwordManager ?? throw new ArgumentNullException(nameof(passwordManager));
             _identityUserManager = identityUserManager ?? throw new ArgumentNullException(nameof(identityUserManager));
             _verification = verification ?? throw new ArgumentNullException(nameof(verification));
             _passwordValidators = passwordValidators ?? throw new ArgumentNullException(nameof(passwordValidators));
@@ -42,7 +45,7 @@ namespace RuntimeApps.Authentication.Features.PasswordRecovery.Services {
             if(string.IsNullOrWhiteSpace(email) || email.Length > 256)
                 return CreateGenericResponse();
 
-            var user = await _userManager.FindByEmailAsync(email.Trim());
+            var user = await _emailManager.FindByEmailAsync(email.Trim());
             // Only a confirmed email address can be used to recover an account.
             if(user == null || !user.EmailConfirmed)
                 return CreateGenericResponse();
@@ -102,14 +105,14 @@ namespace RuntimeApps.Authentication.Features.PasswordRecovery.Services {
             // user's security stamp. Code mode creates the Identity token after code validation.
             var resetToken = _options.Method == ForgotPasswordMethod.Link
                 ? credential
-                : await _userManager.GeneratePasswordResetTokenAsync(user);
+                : await _passwordManager.GeneratePasswordResetTokenAsync(user);
             var verification = await _verification.VerifyAsync(
                 verificationHandle, credential, VerificationPurpose.PasswordReset,
                 VerificationChannel.Email, cancellationToken);
             if(!verification.Succeeded)
                 return Failure("InvalidPasswordReset", "The password reset request is invalid.");
 
-            var resetResult = await _userManager.ResetPasswordAsync(verification.Data, resetToken, newPassword);
+            var resetResult = await _passwordManager.ResetPasswordAsync(verification.Data, resetToken, newPassword);
             if(!resetResult.Succeeded)
                 return new Result(ResultCode.BadRequest, resetResult.Errors);
 

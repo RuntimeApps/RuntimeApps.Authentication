@@ -24,6 +24,8 @@ namespace RuntimeApps.Authentication.Endpoints.RefreshTokens {
 
             routes.MapPost("refresh", async Task<IResult> (HttpContext context,
                 IUserManager<TUser> userManager,
+                IUserLockoutManager<TUser> lockoutManager,
+                IUserLoginManager<TUser> loginManager,
                 ISignInManager<TUser> signInManager,
                 IRefreshTokenService<TKey> refreshTokenService,
                 IRefreshTokenRequestLimiter requestLimiter,
@@ -56,8 +58,8 @@ namespace RuntimeApps.Authentication.Endpoints.RefreshTokens {
                         return Results.Unauthorized();
                     }
 
-                    var isLockedOut = await userManager.IsLockedOutAsync(user);
-                    var hasExternalLogin = (await userManager.GetLoginsAsync(user)).Count > 0;
+                    var isLockedOut = await lockoutManager.IsLockedOutAsync(user);
+                    var hasExternalLogin = (await loginManager.GetLoginsAsync(user)).Count > 0;
                     var emailPolicyAllowsSignIn = user.EmailConfirmed ||
                         (hasExternalLogin && !verificationOptions.Value.RequireEmailVerificationForExternalLogins);
                     if(isLockedOut || !emailPolicyAllowsSignIn ||

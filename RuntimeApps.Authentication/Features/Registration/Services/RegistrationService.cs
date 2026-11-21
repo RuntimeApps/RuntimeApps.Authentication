@@ -13,6 +13,7 @@ namespace RuntimeApps.Authentication.Features.Registration.Services {
         where TUser : IdentityUser<TKey>, new()
         where TKey : IEquatable<TKey> {
         private readonly IUserManager<TUser> _userManager;
+        private readonly IUserEmailManager<TUser> _emailManager;
         private readonly IVerificationWorkflowService<TUser, TKey> _verification;
         private readonly IUserAccountService<TUser> _accountService;
         private readonly VerificationOptions _options;
@@ -20,11 +21,13 @@ namespace RuntimeApps.Authentication.Features.Registration.Services {
 
         public RegistrationService(
             IUserManager<TUser> userManager,
+            IUserEmailManager<TUser> emailManager,
             IVerificationWorkflowService<TUser, TKey> verification,
             IUserAccountService<TUser> accountService,
             IOptions<VerificationOptions> options,
             TimeProvider timeProvider = null) {
             _userManager = userManager;
+            _emailManager = emailManager;
             _verification = verification;
             _accountService = accountService;
             _options = options.Value;
@@ -40,7 +43,7 @@ namespace RuntimeApps.Authentication.Features.Registration.Services {
             if(string.IsNullOrWhiteSpace(user.UserName))
                 user.UserName = user.Email;
 
-            var existingUser = await _userManager.FindByEmailAsync(user.Email);
+            var existingUser = await _emailManager.FindByEmailAsync(user.Email);
             // Do not create or modify confirmed accounts. Keep the response indistinguishable
             // from a pending registration to avoid exposing whether an email is registered.
             if(existingUser?.EmailConfirmed == true)
@@ -54,7 +57,7 @@ namespace RuntimeApps.Authentication.Features.Registration.Services {
                 var createResult = await _userManager.CreateAsync(user, password);
                 if(!createResult.Succeeded) {
                     // A concurrent registration may have created the account after our initial lookup.
-                    var racedUser = await _userManager.FindByEmailAsync(user.Email);
+                    var racedUser = await _emailManager.FindByEmailAsync(user.Email);
                     if(racedUser?.EmailConfirmed == true)
                         return GenericResponse();
                     if(racedUser == null)

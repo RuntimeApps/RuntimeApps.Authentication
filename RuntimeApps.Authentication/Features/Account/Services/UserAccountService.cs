@@ -15,6 +15,8 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
         where TUser : IdentityUser<TKey>
         where TKey : IEquatable<TKey> {
         private readonly IUserManager<TUser> _userManager;
+        private readonly IUserLoginManager<TUser> _loginManager;
+        private readonly IUserEmailManager<TUser> _emailManager;
         private readonly ISignInManager<TUser> _signInManager;
         private readonly IJwtProvider<TUser> _jwtUtils;
         private readonly IAuthenticationSchemeProvider _authenticationSchemeProvider;
@@ -39,7 +41,7 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
                                   IJwtProvider<TUser> jwtUtils = null)
             : this(userManager, signInManager, externalLoginProviders, authenticationHandlerProvider,
                    contextAccessor, userClaimsPrincipalFactory, authenticationSchemeProvider,
-                   jwtUtils, null, null, null, null, null) {
+                   jwtUtils, null, null, null, null, null, null, null) {
         }
 
         public UserAccountService(IUserManager<TUser> userManager,
@@ -54,8 +56,12 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
                                   IOptions<RefreshTokenOptions> refreshTokenOptions = null,
                                   IExternalLoginEmailTrustPolicy<TUser> externalLoginEmailTrustPolicy = null,
                                   IOptions<VerificationOptions> verificationOptions = null,
-                                  IVerificationWorkflowService<TUser, TKey> verificationWorkflow = null) {
+                                  IVerificationWorkflowService<TUser, TKey> verificationWorkflow = null,
+                                  IUserLoginManager<TUser> loginManager = null,
+                                  IUserEmailManager<TUser> emailManager = null) {
             _userManager = userManager;
+            _loginManager = loginManager ?? userManager as IUserLoginManager<TUser>;
+            _emailManager = emailManager ?? userManager as IUserEmailManager<TUser>;
             _signInManager = signInManager;
             _jwtUtils = jwtUtils;
             _externalLoginProviders = externalLoginProviders;
@@ -80,12 +86,12 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
                 return new Result<TUser, Token>(ResultCode.BadRequest, Result.CreateErrors("Invalid token", "Invalid External Authentication."));
 
             var loginInfo = providerResult.LoginInfo;
-            var user = await _userManager.FindByLoginAsync(loginInfo.LoginProvider, loginInfo.ProviderKey);
+            var user = await _loginManager.FindByLoginAsync(loginInfo.LoginProvider, loginInfo.ProviderKey);
             if(user == null) {
                 var trustedEmail = _externalLoginEmailTrustPolicy?.IsEmailTrusted(provider.Provider, providerResult) == true;
                 var existingEmailUser = string.IsNullOrWhiteSpace(providerResult.Email)
                     ? null
-                    : await _userManager.FindByEmailAsync(providerResult.Email);
+                    : await _emailManager.FindByEmailAsync(providerResult.Email);
 
                 if(existingEmailUser != null) {
                     // Never link an external identity to an existing account based on an unverified email.
@@ -102,7 +108,7 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
                             return new Result<TUser, Token>(ResultCode.BadRequest, updateResult.Errors);
                     }
 
-                    var addLoginResult = await _userManager.AddLoginAsync(user, loginInfo);
+                    var addLoginResult = await _loginManager.AddLoginAsync(user, loginInfo);
                     if(!addLoginResult.Succeeded)
                         return new Result<TUser, Token>(ResultCode.BadRequest, addLoginResult.Errors);
                 } else {
@@ -119,7 +125,7 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
                     if(!createResult.Succeeded)
                         return new Result<TUser, Token>(ResultCode.BadRequest, createResult.Errors);
 
-                    var addLoginResult = await _userManager.AddLoginAsync(user, loginInfo);
+                    var addLoginResult = await _loginManager.AddLoginAsync(user, loginInfo);
                     if(!addLoginResult.Succeeded)
                         return new Result<TUser, Token>(ResultCode.BadRequest, addLoginResult.Errors);
                 }

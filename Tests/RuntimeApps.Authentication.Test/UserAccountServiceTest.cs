@@ -1,4 +1,4 @@
-﻿using FluentAssertions;
+using FluentAssertions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -22,6 +22,8 @@ namespace RuntimeApps.Authentication.Test {
     public class UserAccountServiceTest {
         private const IdentityUser nullUSer = null;
         private readonly Mock<IUserManager<IdentityUser>> _userManagerMock;
+                    private readonly Mock<IUserLoginManager<IdentityUser>> _loginManagerMock;
+                    private readonly Mock<IUserEmailManager<IdentityUser>> _emailManagerMock;
         private readonly Mock<ISignInManager<IdentityUser>> _signInManagerMock;
         private readonly Mock<IJwtProvider<IdentityUser>> _jwtProviderMock;
         private readonly Mock<IExternalLoginProvider<IdentityUser>> _externalLoginProvider1;
@@ -35,6 +37,8 @@ namespace RuntimeApps.Authentication.Test {
 
         public UserAccountServiceTest() {
             _userManagerMock = new Mock<IUserManager<IdentityUser>>();
+                        _loginManagerMock = new Mock<IUserLoginManager<IdentityUser>>();
+                        _emailManagerMock = new Mock<IUserEmailManager<IdentityUser>>();
             _signInManagerMock = new Mock<ISignInManager<IdentityUser>>();
             _jwtProviderMock = new Mock<IJwtProvider<IdentityUser>>();
             _externalLoginProvider1 = new Mock<IExternalLoginProvider<IdentityUser>>();
@@ -52,7 +56,7 @@ namespace RuntimeApps.Authentication.Test {
             _httpContextAccessorMock.Object,
             _userClaimsPrincipalFactoryMock.Object,
             _authenticationSchemeProviderMock.Object,
-            _jwtProviderMock.Object, null, null, _externalLoginEmailTrustPolicyMock.Object);
+            _jwtProviderMock.Object, null, null, _externalLoginEmailTrustPolicyMock.Object, null, null, _loginManagerMock.Object, _emailManagerMock.Object);
 
             _authenticationSchemeProviderMock.Setup(p => p.GetDefaultSignInSchemeAsync())
                 .ReturnsAsync((AuthenticationScheme)null);
@@ -187,13 +191,13 @@ namespace RuntimeApps.Authentication.Test {
                 .ReturnsAsync(new RuntimeApps.Authentication.Features.ExternalLogin.Models.ExternalLoginProviderResult<IdentityUser> {
                     User = user, LoginInfo = loginInfo, Email = user.Email, EmailVerified = false
                 });
-            _userManagerMock.Setup(u => u.FindByLoginAsync(provider, token))
+            _loginManagerMock.Setup(u => u.FindByLoginAsync(provider, token))
                 .ReturnsAsync(nullUSer);
-            _userManagerMock.Setup(u => u.FindByEmailAsync(user.Email))
+            _emailManagerMock.Setup(u => u.FindByEmailAsync(user.Email))
                 .ReturnsAsync(nullUSer);
             _userManagerMock.Setup(u => u.CreateAsync(user))
                 .ReturnsAsync(IdentityResult.Success);
-            _userManagerMock.Setup(u => u.AddLoginAsync(user, loginInfo))
+            _loginManagerMock.Setup(u => u.AddLoginAsync(user, loginInfo))
                 .ReturnsAsync(IdentityResult.Success);
             _jwtProviderMock.Setup(t => t.GenerateTokenAsync(user))
                 .ReturnsAsync(appToken);
@@ -208,7 +212,7 @@ namespace RuntimeApps.Authentication.Test {
             result.Meta.Should().NotBeNull()
                 .And.Be(appToken);
             _userManagerMock.Verify(u => u.CreateAsync(It.IsAny<IdentityUser>()), Times.Once());
-            _userManagerMock.Verify(u => u.AddLoginAsync(It.IsAny<IdentityUser>(), It.IsAny<UserLoginInfo>()), Times.Once());
+            _loginManagerMock.Verify(u => u.AddLoginAsync(It.IsAny<IdentityUser>(), It.IsAny<UserLoginInfo>()), Times.Once());
         }
 
         [Fact]
@@ -226,14 +230,14 @@ namespace RuntimeApps.Authentication.Test {
                     Email = existingUser.Email,
                     EmailVerified = true
                 });
-            _userManagerMock.Setup(manager => manager.FindByLoginAsync(provider, token)).ReturnsAsync((IdentityUser)null);
-            _userManagerMock.Setup(manager => manager.FindByEmailAsync(existingUser.Email)).ReturnsAsync(existingUser);
+            _loginManagerMock.Setup(manager => manager.FindByLoginAsync(provider, token)).ReturnsAsync((IdentityUser)null);
+            _emailManagerMock.Setup(manager => manager.FindByEmailAsync(existingUser.Email)).ReturnsAsync(existingUser);
 
             var result = await _userAccountService.ExternalLoginAsync(provider, token);
 
             Assert.False(result.Succeeded);
             Assert.Equal(RuntimeApps.Authentication.Shared.Models.ResultCode.Conflict, result.Code);
-            _userManagerMock.Verify(manager => manager.AddLoginAsync(It.IsAny<IdentityUser>(), It.IsAny<UserLoginInfo>()), Times.Never());
+            _loginManagerMock.Verify(manager => manager.AddLoginAsync(It.IsAny<IdentityUser>(), It.IsAny<UserLoginInfo>()), Times.Never());
         }
 
         [Fact]
@@ -249,14 +253,14 @@ namespace RuntimeApps.Authentication.Test {
                     User = new IdentityUser { Email = user.Email }, LoginInfo = loginInfo,
                     Email = user.Email, EmailVerified = false
                 });
-            _userManagerMock.Setup(manager => manager.FindByLoginAsync(provider, token)).ReturnsAsync((IdentityUser)null);
-            _userManagerMock.Setup(manager => manager.FindByEmailAsync(user.Email)).ReturnsAsync(user);
+            _loginManagerMock.Setup(manager => manager.FindByLoginAsync(provider, token)).ReturnsAsync((IdentityUser)null);
+            _emailManagerMock.Setup(manager => manager.FindByEmailAsync(user.Email)).ReturnsAsync(user);
 
             var result = await _userAccountService.ExternalLoginAsync(provider, token);
 
             Assert.False(result.Succeeded);
             Assert.Equal(RuntimeApps.Authentication.Shared.Models.ResultCode.Conflict, result.Code);
-            _userManagerMock.Verify(manager => manager.AddLoginAsync(It.IsAny<IdentityUser>(), It.IsAny<UserLoginInfo>()), Times.Never());
+            _loginManagerMock.Verify(manager => manager.AddLoginAsync(It.IsAny<IdentityUser>(), It.IsAny<UserLoginInfo>()), Times.Never());
         }
 
         [Fact]
@@ -274,10 +278,10 @@ namespace RuntimeApps.Authentication.Test {
                 .ReturnsAsync(new RuntimeApps.Authentication.Features.ExternalLogin.Models.ExternalLoginProviderResult<IdentityUser> {
                     User = user, LoginInfo = loginInfo, Email = user.Email, EmailVerified = false
                 });
-            _userManagerMock.Setup(manager => manager.FindByLoginAsync(provider, token)).ReturnsAsync((IdentityUser)null);
-            _userManagerMock.Setup(manager => manager.FindByEmailAsync(user.Email)).ReturnsAsync((IdentityUser)null);
+            _loginManagerMock.Setup(manager => manager.FindByLoginAsync(provider, token)).ReturnsAsync((IdentityUser)null);
+            _emailManagerMock.Setup(manager => manager.FindByEmailAsync(user.Email)).ReturnsAsync((IdentityUser)null);
             _userManagerMock.Setup(manager => manager.CreateAsync(user)).ReturnsAsync(IdentityResult.Success);
-            _userManagerMock.Setup(manager => manager.AddLoginAsync(user, loginInfo)).ReturnsAsync(IdentityResult.Success);
+            _loginManagerMock.Setup(manager => manager.AddLoginAsync(user, loginInfo)).ReturnsAsync(IdentityResult.Success);
             workflow.Setup(service => service.StartAsync(
                     user, RuntimeApps.Authentication.Features.Verification.Models.VerificationPurpose.Registration,
                     RuntimeApps.Authentication.Features.Verification.Models.VerificationChannel.Email, user.Email,
@@ -292,7 +296,7 @@ namespace RuntimeApps.Authentication.Test {
                 _jwtProviderMock.Object, null, null, _externalLoginEmailTrustPolicyMock.Object,
                 Microsoft.Extensions.Options.Options.Create(new RuntimeApps.Authentication.Features.Verification.Models.VerificationOptions {
                     RequireEmailVerificationForExternalLogins = true
-                }), workflow.Object);
+                }), workflow.Object, _loginManagerMock.Object, _emailManagerMock.Object);
 
             var result = await service.ExternalLoginAsync(provider, token);
 
@@ -323,9 +327,9 @@ namespace RuntimeApps.Authentication.Test {
                 .ReturnsAsync(new RuntimeApps.Authentication.Features.ExternalLogin.Models.ExternalLoginProviderResult<IdentityUser> {
                     User = user, LoginInfo = loginInfo, Email = user.Email, EmailVerified = false
                 });
-            _userManagerMock.Setup(u => u.FindByLoginAsync(provider, token))
+            _loginManagerMock.Setup(u => u.FindByLoginAsync(provider, token))
                 .ReturnsAsync(user);
-            _userManagerMock.Setup(u => u.AddLoginAsync(user, loginInfo))
+            _loginManagerMock.Setup(u => u.AddLoginAsync(user, loginInfo))
                 .ReturnsAsync(IdentityResult.Success);
             _jwtProviderMock.Setup(t => t.GenerateTokenAsync(user))
                 .ReturnsAsync(appToken);
@@ -340,7 +344,7 @@ namespace RuntimeApps.Authentication.Test {
             result.Meta.Should().NotBeNull()
                 .And.Be(appToken);
             _userManagerMock.Verify(u => u.CreateAsync(It.IsAny<IdentityUser>()), Times.Never());
-            _userManagerMock.Verify(u => u.AddLoginAsync(It.IsAny<IdentityUser>(), It.IsAny<UserLoginInfo>()), Times.Never());
+            _loginManagerMock.Verify(u => u.AddLoginAsync(It.IsAny<IdentityUser>(), It.IsAny<UserLoginInfo>()), Times.Never());
         }
 
 
@@ -362,7 +366,7 @@ namespace RuntimeApps.Authentication.Test {
             result.Data.Should().BeNull();
             result.Meta.Should().BeNull();
             _userManagerMock.Verify(u => u.CreateAsync(It.IsAny<IdentityUser>()), Times.Never());
-            _userManagerMock.Verify(u => u.AddLoginAsync(It.IsAny<IdentityUser>(), It.IsAny<UserLoginInfo>()), Times.Never());
+            _loginManagerMock.Verify(u => u.AddLoginAsync(It.IsAny<IdentityUser>(), It.IsAny<UserLoginInfo>()), Times.Never());
         }
     }
 }

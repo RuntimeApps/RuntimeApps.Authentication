@@ -9,7 +9,7 @@ using RuntimeApps.Authentication.Features.Verification.Contracts;
 using RuntimeApps.Authentication.Identity.Contracts;
 namespace RuntimeApps.Authentication.Sample.RoleAuthorize {
     public static class DbInitializer {
-        public static void Initialize(ApplicationDbContext context, IUserManager<IdentityUser<int>> userManager, IRoleManager<IdentityRole<int>> roleManager) {
+        public static void Initialize(ApplicationDbContext context, IUserManager<IdentityUser<int>> userManager, IUserRoleManager<IdentityUser<int>> userRoleManager, IRoleManager<IdentityRole<int>> roleManager) {
             context.Database.Migrate();
 
             if(context.Users.Any()) {
@@ -26,7 +26,7 @@ namespace RuntimeApps.Authentication.Sample.RoleAuthorize {
             var password = "P@ssw0rd";
             var userAddResult = userManager.CreateAsync(user, password).Result;
 
-            var userRoleAddResult = userManager.AddToRolesAsync(user, RoleConsts.AllRoles()).Result;
+            var userRoleAddResult = userRoleManager.AddToRolesAsync(user, RoleConsts.AllRoles()).Result;
 
             Console.WriteLine($"Admin user information:");
             Console.WriteLine($"UserName: {user.UserName}");

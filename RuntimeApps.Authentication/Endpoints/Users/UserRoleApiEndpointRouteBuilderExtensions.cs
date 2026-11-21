@@ -11,12 +11,12 @@ namespace RuntimeApps.Authentication.Endpoints.Users {
             where TUser : class {
             var routeGroup = endpoints.MapGroup("");
 
-            routeGroup.MapGet("{userId}/Role", async Task<Results<Ok<IList<string>>, ValidationProblem>> ([FromRoute] string userId, IUserManager<TUser> userManager) => {
+            routeGroup.MapGet("{userId}/Role", async Task<Results<Ok<IList<string>>, ValidationProblem>> ([FromRoute] string userId, IUserManager<TUser> userManager, IUserRoleManager<TUser> roleManager) => {
                 var user = await userManager.FindByIdAsync(userId);
                 if(user == null)
                     return UserNotFound();
 
-                var result = await userManager.GetRolesAsync(user);
+                var result = await roleManager.GetRolesAsync(user);
                 return TypedResults.Ok(result);
             });
 
@@ -27,48 +27,48 @@ namespace RuntimeApps.Authentication.Endpoints.Users {
             where TUser : class {
             var routeGroup = endpoints.MapGroup("");
 
-            routeGroup.MapPost("{userId}/Role", async Task<Results<Ok, ValidationProblem>> ([FromRoute] string userId, [FromBody] IEnumerable<string> roles, IUserManager<TUser> userManager) => {
+            routeGroup.MapPost("{userId}/Role", async Task<Results<Ok, ValidationProblem>> ([FromRoute] string userId, [FromBody] IEnumerable<string> roles, IUserManager<TUser> userManager, IUserRoleManager<TUser> roleManager) => {
                 var user = await userManager.FindByIdAsync(userId);
                 if(user == null)
                     return UserNotFound();
 
-                var result = await userManager.AddToRolesAsync(user, roles);
+                var result = await roleManager.AddToRolesAsync(user, roles);
                 if(!result.Succeeded)
                     return result.CreateValidationProblem();
 
                 return TypedResults.Ok();
             });
 
-            routeGroup.MapDelete("{userId}/Role", async Task<Results<Ok, ValidationProblem>> ([FromRoute] string userId, [FromBody] IEnumerable<string> roles, IUserManager<TUser> userManager) => {
+            routeGroup.MapDelete("{userId}/Role", async Task<Results<Ok, ValidationProblem>> ([FromRoute] string userId, [FromBody] IEnumerable<string> roles, IUserManager<TUser> userManager, IUserRoleManager<TUser> roleManager) => {
                 var user = await userManager.FindByIdAsync(userId);
                 if(user == null)
                     return UserNotFound();
 
-                var result = await userManager.RemoveFromRolesAsync(user, roles);
+                var result = await roleManager.RemoveFromRolesAsync(user, roles);
                 if(!result.Succeeded)
                     return result.CreateValidationProblem();
 
                 return TypedResults.Ok();
             });
 
-            routeGroup.MapPost("{userId}/Role/{roleName}", async Task<Results<Ok, ValidationProblem>> ([FromRoute] string userId, [FromRoute] string roleName, IUserManager<TUser> userManager) => {
+            routeGroup.MapPost("{userId}/Role/{roleName}", async Task<Results<Ok, ValidationProblem>> ([FromRoute] string userId, [FromRoute] string roleName, IUserManager<TUser> userManager, IUserRoleManager<TUser> roleManager) => {
                 var user = await userManager.FindByIdAsync(userId);
                 if(user == null)
                     return UserNotFound();
 
-                var result = await userManager.AddToRoleAsync(user, roleName);
+                var result = await roleManager.AddToRoleAsync(user, roleName);
                 if(!result.Succeeded)
                     return result.CreateValidationProblem();
 
                 return TypedResults.Ok();
             });
 
-            routeGroup.MapDelete("{userId}/Role/{roleName}", async Task<Results<Ok, ValidationProblem>> ([FromRoute] string userId, [FromRoute] string roleName, IUserManager<TUser> userManager) => {
+            routeGroup.MapDelete("{userId}/Role/{roleName}", async Task<Results<Ok, ValidationProblem>> ([FromRoute] string userId, [FromRoute] string roleName, IUserManager<TUser> userManager, IUserRoleManager<TUser> roleManager) => {
                 var user = await userManager.FindByIdAsync(userId);
                 if(user == null)
                     return UserNotFound();
 
-                var result = await userManager.RemoveFromRoleAsync(user, roleName);
+                var result = await roleManager.RemoveFromRoleAsync(user, roleName);
                 if(!result.Succeeded)
                     return result.CreateValidationProblem();
 
