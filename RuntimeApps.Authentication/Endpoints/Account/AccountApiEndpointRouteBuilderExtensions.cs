@@ -56,7 +56,10 @@ namespace RuntimeApps.Authentication.Endpoints.Account {
             RequireServices(endpoints, "Registration",
                 typeof(IRegistrationService<TUser, TKey>),
                 typeof(IUserAccountService<TUser>),
-                typeof(IUserMapper<TUser, TUserDto>));
+                typeof(IUserMapper<TUser, TUserDto>),
+                typeof(IVerificationWorkflowService<TUser, TKey>),
+                typeof(IVerificationRequestStore<TKey>),
+                typeof(IVerificationSender<TUser, TKey>));
 
             var routeGroup = endpoints.MapGroup("").AllowAnonymous();
 

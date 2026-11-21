@@ -28,12 +28,12 @@ public sealed class FeatureEndpointMappingTest {
 
     [Fact]
     public void RegistrationMapping_IsIndependentAndAnonymous() {
-        using var host = CreateHost(includeVerificationDependencies: false);
+        using var host = CreateHost(includeVerificationDependencies: true);
 
         host.Endpoints.MapGroup("api/register")
             .MapRegistrationApi<IdentityUser<int>, TestUserDto, int>();
 
-        var endpoint = Endpoints(host).Single();
+        var endpoint = Assert.Single(Endpoints(host));
         Assert.Equal("api/register/register", ((RouteEndpoint)endpoint).RoutePattern.RawText);
         Assert.IsAssignableFrom<IAllowAnonymous>(endpoint.Metadata.GetMetadata<IAllowAnonymous>());
         Assert.Equal("Registration_Register", endpoint.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName);
@@ -55,13 +55,19 @@ public sealed class FeatureEndpointMappingTest {
 
     [Fact]
     public void RegistrationMapping_ReportsMissingDependenciesAtMappingTime() {
-        using var host = new TestHost(new ServiceCollection().BuildServiceProvider());
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IRegistrationService<IdentityUser<int>, int>>());
+        services.AddSingleton(Mock.Of<IUserAccountService<IdentityUser<int>>>());
+        services.AddSingleton(Mock.Of<IUserMapper<IdentityUser<int>, TestUserDto>>());
+        using var host = new TestHost(services.BuildServiceProvider());
 
         var error = Assert.Throws<InvalidOperationException>(() => host.Endpoints
             .MapRegistrationApi<IdentityUser<int>, TestUserDto, int>());
 
         Assert.Contains("Registration", error.Message, StringComparison.Ordinal);
-        Assert.Contains("IRegistrationService", error.Message, StringComparison.Ordinal);
+        Assert.Contains("IVerificationWorkflowService", error.Message, StringComparison.Ordinal);
+        Assert.Contains("IVerificationRequestStore", error.Message, StringComparison.Ordinal);
+        Assert.Contains("IVerificationSender", error.Message, StringComparison.Ordinal);
     }
 
     private static TestHost CreateHost(bool includeVerificationDependencies) {
