@@ -99,6 +99,24 @@ You can add more services and customize services. Also, there are some [samples]
 
 ## External Social Logins
 
+### Explicit feature registration and configuration
+
+`AddRuntimeAppsAuthentication<TUser, TRole, TKey>()` registers core Identity managers, the account service, and default user mappers only. Stores and optional features are registered explicitly. The existing `UseJwt`, `AddVerificationServices`, `AddForgotPassword`, `AddRefreshToken`, and provider methods remain available as fluent APIs.
+
+Option sections are `Authentication:Jwt` (the existing `JwtBearerOptions` type), `Authentication:Verification`, `Authentication:ForgotPassword`, `Authentication:RefreshTokens`, and `Authentication:ExternalLogin:Google|Facebook|Microsoft`. Each feature supports configuration binding followed by an action callback. The callback runs after binding, so explicitly assigned values win while untouched values remain from configuration:
+
+```cs
+.AddVerificationServices(builder.Configuration)
+.AddVerificationServices(options => options.CodeLength = 8)
+.AddForgotPassword(builder.Configuration)
+.AddRefreshToken(builder.Configuration, options => options.TokenLifetime = TimeSpan.FromDays(14))
+.UseJwt(JwtBearerDefaults.AuthenticationScheme, builder.Configuration, options => options.RequireHttpsMetadata = true)
+```
+
+Actions alone remain supported. Defaults are supplied by each options type; configuration binding runs before callbacks; standard Options post-configuration runs afterward; feature validation runs on application startup. External provider options bind JSON values while callbacks can set non-bindable mapper delegates. Keep credentials in user secrets, environment variables, or a secret manager.
+
+Registrations use `TryAdd` to preserve application-provided services. Store interfaces for a single store implementation resolve the same scoped store instance. Use `AddUserMapper` to replace the selected mapper; register custom store interfaces before `AddStores` to retain your implementations. Repeating feature registration appends options configuration in call order and does not duplicate default provider/service registrations.
+
 In many cases you want to add social login to your project, so users can quickly log in and use the application. External login needs to redirect the user to the social login pages which are not useful for API services. This repository provides an easy way to handle external login in ASP.Net core web API. You only should do:
 
 In the frontend part, you could use various libraries based on what framework you are using. For example, you could use [Angular Social Login](https://www.npmjs.com/package/@abacritt/angularx-social-login) in angular and [react-social-login

@@ -1,11 +1,27 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 using RuntimeApps.Authentication.Features.RefreshTokens.Contracts;
 using RuntimeApps.Authentication.Features.RefreshTokens.Models;
 using RuntimeApps.Authentication.Features.RefreshTokens.Services;
 namespace RuntimeApps.Authentication.DependencyInjection {
     public static class RefreshTokenBuilderExtensions {
+        public static RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddRefreshToken<TUser, TRole, TKey>(
+            this RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> builder, IConfiguration configuration,
+            Action<RefreshTokenOptions> configure = null)
+            where TUser : Microsoft.AspNetCore.Identity.IdentityUser<TKey>, new()
+            where TRole : Microsoft.AspNetCore.Identity.IdentityRole<TKey>
+            where TKey : IEquatable<TKey> {
+            ArgumentNullException.ThrowIfNull(builder);
+            ArgumentNullException.ThrowIfNull(configuration);
+            var configuredOptions = builder.Services.AddOptions<RefreshTokenOptions>()
+                .Bind(configuration.GetSection(RefreshTokenOptions.SectionName));
+            if (configure != null) configuredOptions.Configure(configure);
+            AddServices(builder, configuredOptions);
+            return builder;
+        }
         /// <summary>
         /// Enables refresh-token management. A store must also be registered, either by the EF
         /// integration package or by the application. Without this call, refresh-token services
@@ -19,8 +35,17 @@ namespace RuntimeApps.Authentication.DependencyInjection {
             where TKey : IEquatable<TKey> {
             ArgumentNullException.ThrowIfNull(builder);
 
-            builder.Services.AddOptions<RefreshTokenOptions>()
-                .Configure(configure ?? (_ => { }))
+            var configuredOptions = builder.Services.AddOptions<RefreshTokenOptions>();
+            configuredOptions.Configure(configure ?? (_ => { }));
+            AddServices(builder, configuredOptions);
+            return builder;
+        }
+
+        private static void AddServices<TUser, TRole, TKey>(RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> builder, OptionsBuilder<RefreshTokenOptions> configuredOptions)
+            where TUser : Microsoft.AspNetCore.Identity.IdentityUser<TKey>, new()
+            where TRole : Microsoft.AspNetCore.Identity.IdentityRole<TKey>
+            where TKey : IEquatable<TKey> {
+            configuredOptions
                 .Validate(options => options.TokenLifetime > TimeSpan.Zero,
                     "Refresh-token lifetime must be greater than zero.")
                 .Validate(options => options.RefreshRequestsPerMinute > 0,
@@ -47,7 +72,6 @@ namespace RuntimeApps.Authentication.DependencyInjection {
             builder.Services.TryAddSingleton<IRefreshTokenRequestLimiter, RefreshTokenRequestLimiter>();
             builder.Services.TryAddEnumerable(
                 ServiceDescriptor.Singleton<IHostedService, RefreshTokenStoreStartupValidator<TKey>>());
-            return builder;
         }
     }
 }
