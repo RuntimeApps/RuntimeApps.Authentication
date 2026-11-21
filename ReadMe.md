@@ -109,6 +109,10 @@ The JWT overload binds `Authentication:Jwt` to the selected scheme only. For exa
 
 Actions alone remain supported. Defaults are supplied by each options type; configuration binding runs before callbacks; standard Options post-configuration runs afterward; feature validation runs on application startup. External provider options bind JSON values while callbacks can set non-bindable mapper delegates. Keep credentials in user secrets, environment variables, or a secret manager.
 
+Session issuance is selected explicitly. `.UseJwt(...)` registers the JWT session issuer along with the JWT provider. For cookie applications, configure a cookie authentication scheme and add `.AddCookieAuthenticationSessionIssuer(options => options.IsPersistent = true)`; persistence defaults to `false`. Do not register both issuers for one user type. Refresh tokens remain opt-in through `.AddRefreshToken(...)`: JWT clients receive refresh token data in the response, while cookie clients receive an HttpOnly refresh-token cookie.
+
+Applications upgrading from earlier releases should add exactly one issuer registration. JWT applications using `.UseJwt(...)` receive the JWT issuer automatically. Cookie applications should add `.AddCookieAuthenticationSessionIssuer(...)` and ensure its configured scheme matches the cookie scheme registered with ASP.NET Core.
+
 Registrations use `TryAdd` to preserve application-provided services. Store interfaces for a single store implementation resolve the same scoped store instance. Use `AddUserMapper` to replace the selected mapper; register custom store interfaces before `AddStores` to retain your implementations. Repeating feature registration appends options configuration in call order and does not duplicate default provider/service registrations.
 
 In many cases you want to add social login to your project, so users can quickly log in and use the application. External login needs to redirect the user to the social login pages which are not useful for API services. This repository provides an easy way to handle external login in ASP.Net core web API. You only should do:

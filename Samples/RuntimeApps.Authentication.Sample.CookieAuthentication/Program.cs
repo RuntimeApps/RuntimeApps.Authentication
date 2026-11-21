@@ -27,8 +27,8 @@ var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(connectionString));
 
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddCookie(JwtBearerDefaults.AuthenticationScheme)
+builder.Services.AddAuthentication(Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie()
     .AddRuntimeAppsAuthentication<IdentityUser<int>, IdentityRole<int>, int>()
     .AddEfStores<ApplicationDbContext, IdentityUser<int>, IdentityRole<int>, int>()
     .AddEfRefreshTokenStore<ApplicationDbContext, IdentityUser<int>, IdentityRole<int>, int>()
@@ -36,6 +36,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         options.TokenLifetime = TimeSpan.FromDays(30);
         options.RevokeFamilyOnReuse = true;
     })
+    .AddCookieAuthenticationSessionIssuer()
     .AddDefaultUserMapper<IdentityUserDto<int>>()
     .AddValidators();
 

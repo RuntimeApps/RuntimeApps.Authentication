@@ -12,11 +12,14 @@ namespace RuntimeApps.Authentication.Identity {
 
         protected override async Task<SignInResult> SignInOrTwoFactorAsync(TUser user, bool isPersistent, string loginProvider = null, bool bypassTwoFactor = false) {
             if(!bypassTwoFactor && await IsTfaEnabled(user)) {
-                return SignInResult.TwoFactorRequired;
+                return await base.SignInOrTwoFactorAsync(user, isPersistent, loginProvider, bypassTwoFactor);
             }
 
             return SignInResult.Success;
         }
+
+        public Task<SignInResult> CreateTwoFactorChallengeAsync(TUser user) =>
+            SignInOrTwoFactorAsync(user, false, "RuntimeApps.External", false);
 
         protected virtual async Task<bool> IsTfaEnabled(TUser user)
             => UserManager.SupportsUserTwoFactor &&
