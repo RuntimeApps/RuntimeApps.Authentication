@@ -85,6 +85,7 @@ namespace RuntimeApps.Authentication.DependencyInjection {
             builder.Services.AddOptions<JwtBearerOptions>(scheme).ValidateOnStart();
             builder.Authentication.AddJwtBearer(scheme, configure);
             AddJwtProvider<TUser, TRole, TKey>(builder, scheme);
+            builder.AddJwtAuthenticationSessionIssuer();
             return builder;
         }
 
@@ -97,7 +98,33 @@ namespace RuntimeApps.Authentication.DependencyInjection {
             if (configure != null) schemeOptions.Configure(configure);
             schemeOptions.ValidateOnStart();
             AddJwtProvider<TUser, TRole, TKey>(builder, scheme);
+            builder.AddJwtAuthenticationSessionIssuer();
             return builder;
+        }
+
+        public static RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddJwtAuthenticationSessionIssuer<TUser, TRole, TKey>(this RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> builder)
+            where TUser : IdentityUser<TKey>, new() where TRole : IdentityRole<TKey> where TKey : IEquatable<TKey> {
+            ArgumentNullException.ThrowIfNull(builder);
+            if(!RegisterSessionIssuer<TUser, RuntimeApps.Authentication.Features.Account.Services.JwtAuthenticationSessionIssuer<TUser, TKey>>(builder.Services)) return builder;
+            builder.Services.AddScoped<RuntimeApps.Authentication.Features.Account.Contracts.IAuthenticationSessionIssuer<TUser>, RuntimeApps.Authentication.Features.Account.Services.JwtAuthenticationSessionIssuer<TUser, TKey>>();
+            return builder;
+        }
+
+        public static RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddCookieAuthenticationSessionIssuer<TUser, TRole, TKey>(this RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> builder, Action<RuntimeApps.Authentication.Features.Account.Models.CookieSessionOptions> configure = null)
+            where TUser : IdentityUser<TKey>, new() where TRole : IdentityRole<TKey> where TKey : IEquatable<TKey> {
+            ArgumentNullException.ThrowIfNull(builder);
+            if(!RegisterSessionIssuer<TUser, RuntimeApps.Authentication.Features.Account.Services.CookieAuthenticationSessionIssuer<TUser, TKey>>(builder.Services)) return builder;
+            builder.Services.AddOptions<RuntimeApps.Authentication.Features.Account.Models.CookieSessionOptions>();
+            if(configure != null) builder.Services.Configure(configure);
+            builder.Services.AddScoped<RuntimeApps.Authentication.Features.Account.Contracts.IAuthenticationSessionIssuer<TUser>, RuntimeApps.Authentication.Features.Account.Services.CookieAuthenticationSessionIssuer<TUser, TKey>>();
+            return builder;
+        }
+
+        private static bool RegisterSessionIssuer<TUser, TIssuer>(IServiceCollection services) where TUser : class {
+            var existing = services.LastOrDefault(d => d.ServiceType == typeof(RuntimeApps.Authentication.Features.Account.Contracts.IAuthenticationSessionIssuer<TUser>));
+            if(existing == null) return true;
+            if(existing.ImplementationType == typeof(TIssuer)) return false;
+            throw new InvalidOperationException("A conflicting authentication session issuer is already registered for this user type.");
         }
 
         private static void AddJwtProvider<TUser, TRole, TKey>(RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> builder, string scheme)

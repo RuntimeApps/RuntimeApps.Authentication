@@ -10,6 +10,8 @@ using RuntimeApps.Authentication.Features.RefreshTokens.Contracts;
 using RuntimeApps.Authentication.Features.RefreshTokens.Models;
 using RuntimeApps.Authentication.Features.RefreshTokens.Services;
 using RuntimeApps.Authentication.Features.Verification.Models;
+using RuntimeApps.Authentication.Features.Account.Models;
+using RuntimeApps.Authentication.Features.Account.Contracts;
 using RuntimeApps.Authentication.Identity.Contracts;
 namespace RuntimeApps.Authentication.Endpoints.RefreshTokens {
     public static class RefreshTokenApiEndpointRouteBuilderExtensions {
@@ -20,6 +22,10 @@ namespace RuntimeApps.Authentication.Endpoints.RefreshTokens {
         public static IEndpointRouteBuilder MapRefreshTokenApi<TUser, TKey>(this IEndpointRouteBuilder endpoints)
             where TUser : IdentityUser<TKey>
             where TKey : IEquatable<TKey> {
+            if(endpoints.ServiceProvider.GetRequiredService<IServiceProviderIsService>()
+                .IsService(typeof(IAuthenticationSessionIssuer<TUser>)) != true)
+                throw new InvalidOperationException("Refresh-token endpoints require exactly one explicitly registered authentication session issuer.");
+
             var routes = endpoints.MapGroup("");
 
             routes.MapPost("refresh", async Task<IResult> (HttpContext context,
@@ -27,17 +33,19 @@ namespace RuntimeApps.Authentication.Endpoints.RefreshTokens {
                 IUserLockoutManager<TUser> lockoutManager,
                 IUserLoginManager<TUser> loginManager,
                 ISignInManager<TUser> signInManager,
+                IUserClaimsPrincipalFactory<TUser> principalFactory,
                 IRefreshTokenService<TKey> refreshTokenService,
                 IRefreshTokenRequestLimiter requestLimiter,
                 IServiceProvider services,
-                IAuthenticationSchemeProvider schemeProvider,
-                IAuthenticationHandlerProvider handlerProvider,
+                IEnumerable<IAuthenticationSessionIssuer<TUser>> sessionIssuers,
                 IOptions<RefreshTokenOptions> options,
+                IOptions<CookieSessionOptions> cookieOptions,
                 IOptions<VerificationOptions> verificationOptions) => {
                     if(!await requestLimiter.IsAllowedAsync(context, context.RequestAborted))
                         return Results.StatusCode(StatusCodes.Status429TooManyRequests);
 
-                    var isCookie = await HasCookieSignInHandlerAsync(context, schemeProvider, handlerProvider);
+                    var mode = GetSessionMode(sessionIssuers);
+                    var isCookie = mode == AuthenticationSessionMode.Cookie;
                     RefreshTokenRequest request = null;
                     if(!isCookie && context.Request.HasJsonContentType())
                         request = await context.Request.ReadFromJsonAsync<RefreshTokenRequest>(context.RequestAborted);
@@ -70,7 +78,9 @@ namespace RuntimeApps.Authentication.Endpoints.RefreshTokens {
 
                     try {
                         if(isCookie) {
-                            await signInManager.SignInAsync(user, true);
+                            var principal = await principalFactory.CreateAsync(user);
+                            await context.SignInAsync(cookieOptions.Value.Scheme, principal,
+                                new AuthenticationProperties { IsPersistent = cookieOptions.Value.IsPersistent });
                             AppendRefreshCookie(context, options.Value, session.RefreshToken, session.ExpiresAt);
                             return Results.NoContent();
                         }
@@ -81,7 +91,7 @@ namespace RuntimeApps.Authentication.Endpoints.RefreshTokens {
                             return Results.Problem("JWT authentication is not configured.", statusCode: StatusCodes.Status500InternalServerError);
                         }
 
-                        var accessToken = await jwtProvider.GenerateTokenAsync(user);
+                        var accessToken = await jwtProvider.GenerateTokenAsync(user, context.RequestAborted);
                         accessToken.RefreshToken = session.RefreshToken;
                         accessToken.RefreshTokenExpireDate = session.ExpiresAt;
                         accessToken.SessionId = session.SessionId;
@@ -97,10 +107,10 @@ namespace RuntimeApps.Authentication.Endpoints.RefreshTokens {
 
             routes.MapPost("logout", async Task<IResult> (HttpContext context,
                 IRefreshTokenService<TKey> refreshTokenService,
-                IOptions<RefreshTokenOptions> options) => {
-                    var isCookie = await HasCookieSignInHandlerAsync(context,
-                        context.RequestServices.GetRequiredService<IAuthenticationSchemeProvider>(),
-                        context.RequestServices.GetRequiredService<IAuthenticationHandlerProvider>());
+                IOptions<RefreshTokenOptions> options,
+                IOptions<CookieSessionOptions> cookieOptions,
+                IEnumerable<IAuthenticationSessionIssuer<TUser>> sessionIssuers) => {
+                    var isCookie = GetSessionMode(sessionIssuers) == AuthenticationSessionMode.Cookie;
                     RefreshTokenRequest request = null;
                     if(!isCookie && context.Request.HasJsonContentType())
                         request = await context.Request.ReadFromJsonAsync<RefreshTokenRequest>(context.RequestAborted);
@@ -112,13 +122,9 @@ namespace RuntimeApps.Authentication.Endpoints.RefreshTokens {
                         : request?.RefreshToken;
                     await refreshTokenService.RevokeAsync(token, context.RequestAborted);
                     if(isCookie)
-                        await context.SignOutAsync();
-                    context.Response.Cookies.Delete(options.Value.CookieName, new CookieOptions {
-                        Path = options.Value.CookiePath,
-                        Secure = options.Value.CookieSecure,
-                        HttpOnly = true,
-                        SameSite = options.Value.CookieSameSite
-                    });
+                        await context.SignOutAsync(cookieOptions.Value.Scheme);
+                    if(isCookie)
+                        DeleteRefreshCookie(context, options.Value);
                     return Results.NoContent();
                 })
             .Accepts<RefreshTokenRequest>(true, "application/json")
@@ -128,43 +134,43 @@ namespace RuntimeApps.Authentication.Endpoints.RefreshTokens {
             routes.MapPost("logout/all", async Task<IResult> (HttpContext context,
                 IUserManager<TUser> userManager,
                 IRefreshTokenService<TKey> refreshTokenService,
-                IOptions<RefreshTokenOptions> options) => {
+                IOptions<RefreshTokenOptions> options,
+                IOptions<CookieSessionOptions> cookieOptions,
+                IEnumerable<IAuthenticationSessionIssuer<TUser>> sessionIssuers) => {
+                    var isCookie = GetSessionMode(sessionIssuers) == AuthenticationSessionMode.Cookie;
                     var user = await userManager.GetUserAsync(context.User);
                     if(user == null)
                         return Results.Unauthorized();
 
-                    var isCookie = await HasCookieSignInHandlerAsync(context,
-                        context.RequestServices.GetRequiredService<IAuthenticationSchemeProvider>(),
-                        context.RequestServices.GetRequiredService<IAuthenticationHandlerProvider>());
                     if(isCookie && !IsAllowedOrigin(context, options.Value))
                         return Results.StatusCode(StatusCodes.Status403Forbidden);
 
                     await refreshTokenService.RevokeAllAsync(user.Id, context.RequestAborted);
                     if(isCookie)
-                        await context.SignOutAsync();
-                    context.Response.Cookies.Delete(options.Value.CookieName, new CookieOptions {
-                        Path = options.Value.CookiePath,
-                        Secure = options.Value.CookieSecure,
-                        HttpOnly = true,
-                        SameSite = options.Value.CookieSameSite
-                    });
+                        await context.SignOutAsync(cookieOptions.Value.Scheme);
+                    if(isCookie)
+                        DeleteRefreshCookie(context, options.Value);
                     return Results.NoContent();
                 }).RequireAuthorization();
 
             return endpoints;
         }
 
-        private static async Task<bool> HasCookieSignInHandlerAsync(
-            HttpContext context,
-            IAuthenticationSchemeProvider schemeProvider,
-            IAuthenticationHandlerProvider handlerProvider) {
-            var scheme = await schemeProvider.GetDefaultSignInSchemeAsync();
-            if(scheme == null)
-                return false;
-
-            var handler = await handlerProvider.GetHandlerAsync(context, scheme.Name);
-            return handler is IAuthenticationSignInHandler;
+        private static AuthenticationSessionMode GetSessionMode<TUser>(IEnumerable<IAuthenticationSessionIssuer<TUser>> issuers) where TUser : class {
+            var registered = issuers.Take(2).ToArray();
+            if(registered.Length != 1)
+                throw new InvalidOperationException("Refresh-token endpoints require exactly one explicitly registered authentication session issuer.");
+            if(registered[0].Mode is not (AuthenticationSessionMode.Jwt or AuthenticationSessionMode.Cookie))
+                throw new InvalidOperationException("The registered authentication session issuer must explicitly select JWT or cookie mode.");
+            return registered[0].Mode;
         }
+
+        private static void DeleteRefreshCookie(HttpContext context, RefreshTokenOptions options) => context.Response.Cookies.Delete(options.CookieName, new CookieOptions {
+            Path = options.CookiePath,
+            Secure = options.CookieSecure,
+            HttpOnly = true,
+            SameSite = options.CookieSameSite
+        });
 
         private static bool IsAllowedOrigin(HttpContext context, RefreshTokenOptions options) {
             var origin = context.Request.Headers["Origin"].ToString();

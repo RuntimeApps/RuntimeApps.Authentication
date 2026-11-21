@@ -19,7 +19,9 @@ namespace RuntimeApps.Authentication.Features.ExternalLogin.Providers {
 
         public string Provider => "GOOGLE";
 
-        public async Task<ExternalLoginProviderResult<TUser>> ValidateAsync(string token) {
+        /// <remarks>The Google token validation library does not expose cancellation. Cancellation is checked before validation begins.</remarks>
+        public async Task<ExternalLoginProviderResult<TUser>> ValidateAsync(string token, CancellationToken cancellationToken = default) {
+            cancellationToken.ThrowIfCancellationRequested();
             var option = _options.Value;
             if(string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(option.ClientId))
                 return null;
@@ -44,6 +46,8 @@ namespace RuntimeApps.Authentication.Features.ExternalLogin.Providers {
                     EmailVerified = payload.EmailVerified,
                     HostedDomain = payload.HostedDomain
                 };
+            } catch(OperationCanceledException) {
+                throw;
             } catch(Exception exception) {
                 // Log the validation reason, but never log the supplied identity token.
                 _logger.LogWarning(

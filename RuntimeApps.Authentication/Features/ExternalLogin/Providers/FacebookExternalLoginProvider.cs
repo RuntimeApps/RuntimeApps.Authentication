@@ -27,7 +27,7 @@ namespace RuntimeApps.Authentication.Features.ExternalLogin.Providers {
 
         public string Provider => "FACEBOOK";
 
-        public async Task<ExternalLoginProviderResult<TUser>> ValidateAsync(string token) {
+        public async Task<ExternalLoginProviderResult<TUser>> ValidateAsync(string token, CancellationToken cancellationToken = default) {
             var option = _options.Value;
             if(string.IsNullOrWhiteSpace(token) ||
                !long.TryParse(option.ClientId, NumberStyles.None, CultureInfo.InvariantCulture, out var configuredAppId))
@@ -41,14 +41,14 @@ namespace RuntimeApps.Authentication.Features.ExternalLogin.Providers {
                 using var client = _httpClientFactory.CreateClient(nameof(FacebookExternalLoginProvider<TUser>));
                 var appTokenUrl = string.Format(CultureInfo.InvariantCulture, option.AccessTokenUrl,
                     Uri.EscapeDataString(option.ClientId), Uri.EscapeDataString(option.ClientSecret));
-                var appTokenResponse = await client.GetStringAsync(appTokenUrl);
+                var appTokenResponse = await client.GetStringAsync(appTokenUrl, cancellationToken);
                 var appToken = JsonConvert.DeserializeObject<FacebookAppAccessToken>(appTokenResponse);
                 if(string.IsNullOrWhiteSpace(appToken?.Access_token))
                     return null;
 
                 var debugUrl = string.Format(CultureInfo.InvariantCulture, option.DebugTokenUrl,
                     Uri.EscapeDataString(token), Uri.EscapeDataString(appToken.Access_token));
-                var debugResponse = await client.GetStringAsync(debugUrl);
+                var debugResponse = await client.GetStringAsync(debugUrl, cancellationToken);
                 var debugData = JsonConvert.DeserializeObject<FacebookUserAccessTokenValidation>(debugResponse)?.Data;
                 if(debugData == null || !debugData.Is_valid || debugData.App_id != configuredAppId ||
                    debugData.User_Id == null ||
@@ -56,7 +56,7 @@ namespace RuntimeApps.Authentication.Features.ExternalLogin.Providers {
                     return null;
 
                 var userUrl = $"https://graph.facebook.com/{graphApiVersion}/me?fields=id,email,first_name,last_name,name,gender,locale,birthday,picture&access_token={Uri.EscapeDataString(token)}";
-                var userResponse = await client.GetStringAsync(userUrl);
+                var userResponse = await client.GetStringAsync(userUrl, cancellationToken);
                 var userInfo = JsonConvert.DeserializeObject<FacebookUserData>(userResponse);
                 if(userInfo?.Id == null || userInfo.Id.Value != debugData.User_Id.Value)
                     return null;
@@ -73,6 +73,8 @@ namespace RuntimeApps.Authentication.Features.ExternalLogin.Providers {
                     // Facebook's current response model does not provide a trustworthy email-verified assertion.
                     EmailVerified = false
                 };
+            } catch(OperationCanceledException) {
+                throw;
             } catch(HttpRequestException exception) {
                 // Do not log request URLs: Facebook access tokens are sent in query parameters.
                 _logger.LogWarning(
