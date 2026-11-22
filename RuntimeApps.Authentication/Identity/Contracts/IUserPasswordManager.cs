@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 
 namespace RuntimeApps.Authentication.Identity.Contracts {
+    /// <remarks>Identity password operations do not accept cancellation tokens; callers check before writing and finish essential session revocation afterward.</remarks>
     public interface IUserPasswordManager<TUser> where TUser : class {
         Task<bool> CheckPasswordAsync(TUser user, string password);
         Task<IdentityResult> AddPasswordAsync(TUser user, string password);

@@ -1,13 +1,17 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
+using System.Text;
 using RuntimeApps.Authentication.Endpoints.Account;
 using RuntimeApps.Authentication.Features.Account.Contracts;
+using RuntimeApps.Authentication.Features.Account.Models;
 using RuntimeApps.Authentication.Features.Registration.Contracts;
+using RuntimeApps.Authentication.Features.ExternalLogin.Contracts;
 using RuntimeApps.Authentication.Features.Verification.Contracts;
 using RuntimeApps.Authentication.Identity.Contracts;
 
@@ -27,6 +31,70 @@ public sealed class FeatureEndpointMappingTest {
     }
 
     [Fact]
+    public void AuthenticationMetadata_DeclaresTokenFreeTwoFactorContinuation() {
+        using var host = CreateHost(includeVerificationDependencies: false);
+        host.Endpoints.MapAuthenticationApi<IdentityUser<int>, TestUserDto, int>();
+
+        var login = Assert.Single(Endpoints(host).OfType<RouteEndpoint>());
+        var accepted = Assert.Single(login.Metadata.GetOrderedMetadata<Microsoft.AspNetCore.Http.Metadata.IProducesResponseTypeMetadata>()
+            .Where(metadata => metadata.StatusCode == StatusCodes.Status202Accepted));
+        Assert.Equal(typeof(AuthenticationContinuationResponse), accepted.Type);
+        Assert.DoesNotContain(typeof(RuntimeApps.Authentication.Shared.Models.Token).Name, accepted.Type!.GetProperties().Select(property => property.Name));
+    }
+
+    [Fact]
+    public void ExternalLoginMetadata_DeclaresSanitized401AndMalformedRequest400() {
+        using var host = CreateHost(includeVerificationDependencies: false, includeExternalProvider: true);
+        host.Endpoints.MapAuthenticationApi<IdentityUser<int>, TestUserDto, int>();
+
+        var externalLogin = Assert.Single(Endpoints(host).OfType<RouteEndpoint>()
+            .Where(endpoint => endpoint.RoutePattern.RawText?.Contains("external", StringComparison.OrdinalIgnoreCase) == true));
+        var responses = externalLogin.Metadata.GetOrderedMetadata<Microsoft.AspNetCore.Http.Metadata.IProducesResponseTypeMetadata>();
+        Assert.Contains(responses, response => response.StatusCode == StatusCodes.Status400BadRequest && response.Type == typeof(HttpValidationProblemDetails));
+        Assert.Contains(responses, response => response.StatusCode == StatusCodes.Status401Unauthorized && response.Type == typeof(Microsoft.AspNetCore.Mvc.ProblemDetails));
+    }
+
+    [Fact]
+    public async Task ExternalLogin_MalformedBodyReturns400AndProviderFailureReturnsSanitized401() {
+        using var host = CreateHost(includeVerificationDependencies: false, includeExternalProvider: true);
+        host.Endpoints.MapAuthenticationApi<IdentityUser<int>, TestUserDto, int>();
+        var externalLogin = Endpoints(host).OfType<RouteEndpoint>()
+            .Single(endpoint => endpoint.RoutePattern.RawText?.Contains("external", StringComparison.OrdinalIgnoreCase) == true);
+        var account = Mock.Get(host.Endpoints.ServiceProvider.GetRequiredService<IUserAccountService<IdentityUser<int>>>());
+        account.Setup(service => service.ExternalLoginAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RuntimeApps.Authentication.Shared.Models.Result<IdentityUser<int>, RuntimeApps.Authentication.Shared.Models.Token>(
+                RuntimeApps.Authentication.Shared.Models.ResultCode.BadRequest,
+                RuntimeApps.Authentication.Shared.Models.Result.CreateErrors("ProviderFailure", "private provider detail")));
+
+        static async Task<(int Status, string Body)> Send(RouteEndpoint endpoint, IServiceProvider services, string json) {
+            var context = new DefaultHttpContext();
+            context.RequestServices = services;
+            context.Request.Method = "POST";
+            context.Request.ContentType = "application/json";
+            var bytes = Encoding.UTF8.GetBytes(json);
+            context.Request.Body = new MemoryStream(bytes);
+            context.Request.ContentLength = bytes.Length;
+            context.Features.Set<IHttpRequestBodyDetectionFeature>(new TestBodyDetectionFeature());
+            await using var response = new MemoryStream();
+            context.Response.Body = response;
+            await endpoint.RequestDelegate!(context);
+            response.Position = 0;
+            return (context.Response.StatusCode, await new StreamReader(response).ReadToEndAsync());
+        }
+
+        var malformed = await Send(externalLogin, host.Endpoints.ServiceProvider, "{\"Provider\":\"\",\"Token\":\"x\"}");
+        Assert.Equal(StatusCodes.Status400BadRequest, malformed.Status);
+        Assert.Contains("InvalidExternalLogin", malformed.Body);
+        Assert.DoesNotContain("private provider detail", malformed.Body);
+
+        var rejected = await Send(externalLogin, host.Endpoints.ServiceProvider, "{\"Provider\":\"sample\",\"Token\":\"invalid\"}");
+        Assert.True(rejected.Status == StatusCodes.Status401Unauthorized, $"Expected 401, got {rejected.Status}: {rejected.Body}");
+        Assert.Contains("External authentication could not be completed.", rejected.Body);
+        Assert.DoesNotContain("private provider detail", rejected.Body);
+        Assert.DoesNotContain("ProviderFailure", rejected.Body);
+    }
+
+    [Fact]
     public void RegistrationMapping_IsIndependentAndAnonymous() {
         using var host = CreateHost(includeVerificationDependencies: true);
 
@@ -37,6 +105,9 @@ public sealed class FeatureEndpointMappingTest {
         Assert.Equal("api/register/register", ((RouteEndpoint)endpoint).RoutePattern.RawText);
         Assert.IsAssignableFrom<IAllowAnonymous>(endpoint.Metadata.GetMetadata<IAllowAnonymous>());
         Assert.Equal("Registration_Register", endpoint.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName);
+        var accepted = Assert.Single(endpoint.Metadata.GetOrderedMetadata<Microsoft.AspNetCore.Http.Metadata.IProducesResponseTypeMetadata>()
+            .Where(metadata => metadata.StatusCode == StatusCodes.Status202Accepted));
+        Assert.Equal(typeof(RuntimeApps.Authentication.Shared.Models.Result<RuntimeApps.Authentication.Features.Registration.Models.RegistrationVerificationResponse>), accepted.Type);
     }
 
     [Fact]
@@ -70,23 +141,37 @@ public sealed class FeatureEndpointMappingTest {
         Assert.Contains("IVerificationSender", error.Message, StringComparison.Ordinal);
     }
 
-    private static TestHost CreateHost(bool includeVerificationDependencies) {
+    private static TestHost CreateHost(bool includeVerificationDependencies, bool includeExternalProvider = false) {
         var services = new ServiceCollection();
+        services.AddLogging().AddProblemDetails();
         services.AddSingleton(Mock.Of<IRegistrationService<IdentityUser<int>, int>>());
         services.AddSingleton(Mock.Of<IUserAccountService<IdentityUser<int>>>());
         services.AddSingleton(Mock.Of<IUserMapper<IdentityUser<int>, TestUserDto>>());
+        if(includeExternalProvider)
+            services.AddSingleton<IExternalLoginProvider<IdentityUser<int>>>(Mock.Of<IExternalLoginProvider<IdentityUser<int>>>());
         if(includeVerificationDependencies) {
             services.AddSingleton(Mock.Of<IVerificationWorkflowService<IdentityUser<int>, int>>());
             services.AddSingleton(Mock.Of<IVerificationRequestStore<int>>());
             services.AddSingleton(Mock.Of<IVerificationSender<IdentityUser<int>, int>>());
         }
-        return new TestHost(services.BuildServiceProvider());
+        var provider = services.BuildServiceProvider();
+        return new TestHost(includeExternalProvider ? new TestServiceProvider(provider) : provider);
     }
 
     private static Endpoint[] Endpoints(TestHost host) => host.Endpoints.DataSources
         .SelectMany(source => source.Endpoints).ToArray();
 
     public sealed class TestUserDto { }
+
+    private sealed class TestServiceProvider(IServiceProvider inner) : IServiceProvider, IServiceProviderIsService {
+        public object GetService(Type serviceType) => serviceType == typeof(IServiceProviderIsService) ? this : inner.GetService(serviceType);
+        public bool IsService(Type serviceType) => serviceType == typeof(IExternalLoginProvider<IdentityUser<int>>) ||
+            inner.GetService<IServiceProviderIsService>()?.IsService(serviceType) == true;
+    }
+
+    private sealed class TestBodyDetectionFeature : IHttpRequestBodyDetectionFeature {
+        public bool CanHaveBody => true;
+    }
 
     private sealed class TestHost : IDisposable {
         public TestHost(IServiceProvider services) => Endpoints = new TestEndpointRouteBuilder(services);

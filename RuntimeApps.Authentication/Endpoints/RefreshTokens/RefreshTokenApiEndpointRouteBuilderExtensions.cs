@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -13,6 +14,7 @@ using RuntimeApps.Authentication.Features.Verification.Models;
 using RuntimeApps.Authentication.Features.Account.Models;
 using RuntimeApps.Authentication.Features.Account.Contracts;
 using RuntimeApps.Authentication.Identity.Contracts;
+using RuntimeApps.Authentication.Shared.Models;
 namespace RuntimeApps.Authentication.Endpoints.RefreshTokens {
     public static class RefreshTokenApiEndpointRouteBuilderExtensions {
         /// <summary>
@@ -48,8 +50,10 @@ namespace RuntimeApps.Authentication.Endpoints.RefreshTokens {
                     var mode = GetSessionMode(sessionIssuers);
                     var isCookie = mode == AuthenticationSessionMode.Cookie;
                     RefreshTokenRequest request = null;
-                    if(!isCookie && context.Request.HasJsonContentType())
-                        request = await context.Request.ReadFromJsonAsync<RefreshTokenRequest>(context.RequestAborted);
+                    if(!isCookie && context.Request.HasJsonContentType()) {
+                        try { request = await context.Request.ReadFromJsonAsync<RefreshTokenRequest>(context.RequestAborted); }
+                        catch(JsonException) { return Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "Invalid request", detail: "The request body is invalid."); }
+                    }
                     if(isCookie && !IsAllowedOrigin(context, options.Value))
                         return Results.StatusCode(StatusCodes.Status403Forbidden);
 
@@ -63,7 +67,7 @@ namespace RuntimeApps.Authentication.Endpoints.RefreshTokens {
 
                     var user = await userManager.FindByIdAsync(Convert.ToString(session.UserId, System.Globalization.CultureInfo.InvariantCulture));
                     if(user == null) {
-                        await refreshTokenService.RevokeAsync(session.RefreshToken, context.RequestAborted);
+                        await refreshTokenService.RevokeAsync(session.RefreshToken, CancellationToken.None);
                         return Results.Unauthorized();
                     }
 
@@ -73,7 +77,7 @@ namespace RuntimeApps.Authentication.Endpoints.RefreshTokens {
                         (hasExternalLogin && !verificationOptions.Value.RequireEmailVerificationForExternalLogins);
                     if(isLockedOut || !emailPolicyAllowsSignIn ||
                        (user.EmailConfirmed && !await signInManager.CanSignInAsync(user))) {
-                        await refreshTokenService.RevokeAsync(session.RefreshToken, context.RequestAborted);
+                        await refreshTokenService.RevokeAsync(session.RefreshToken, CancellationToken.None);
                         return Results.Unauthorized();
                     }
 
@@ -107,7 +111,14 @@ namespace RuntimeApps.Authentication.Endpoints.RefreshTokens {
             .WithName("Session_Refresh")
             .WithTags("Sessions")
             .WithSummary("Refresh the current session")
-            .WithDescription("JWT clients send a RefreshTokenRequest JSON body. Cookie clients send the refresh-token cookie; the JSON body is optional for cookie authentication.");
+            .WithDescription("JWT clients send a RefreshTokenRequest JSON body. Cookie clients send the refresh-token cookie; the JSON body is optional for cookie authentication.")
+            .Produces<Token>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden)
+            .Produces(StatusCodes.Status429TooManyRequests)
+            .ProducesProblem(StatusCodes.Status500InternalServerError);
 
             routes.MapPost("logout", async Task<IResult> (HttpContext context,
                 IRefreshTokenService<TKey> refreshTokenService,
@@ -116,8 +127,10 @@ namespace RuntimeApps.Authentication.Endpoints.RefreshTokens {
                 IEnumerable<IAuthenticationSessionIssuer<TUser>> sessionIssuers) => {
                     var isCookie = GetSessionMode(sessionIssuers) == AuthenticationSessionMode.Cookie;
                     RefreshTokenRequest request = null;
-                    if(!isCookie && context.Request.HasJsonContentType())
-                        request = await context.Request.ReadFromJsonAsync<RefreshTokenRequest>(context.RequestAborted);
+                    if(!isCookie && context.Request.HasJsonContentType()) {
+                        try { request = await context.Request.ReadFromJsonAsync<RefreshTokenRequest>(context.RequestAborted); }
+                        catch(JsonException) { return Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "Invalid request", detail: "The request body is invalid."); }
+                    }
                     if(isCookie && !IsAllowedOrigin(context, options.Value))
                         return Results.StatusCode(StatusCodes.Status403Forbidden);
 
@@ -136,7 +149,10 @@ namespace RuntimeApps.Authentication.Endpoints.RefreshTokens {
             .WithName("Session_Logout")
             .WithTags("Sessions")
             .WithSummary("Log out the current session")
-            .WithDescription("JWT clients send a RefreshTokenRequest JSON body. Cookie clients send the refresh-token cookie; the JSON body is optional for cookie authentication.");
+            .WithDescription("JWT clients send a RefreshTokenRequest JSON body. Cookie clients send the refresh-token cookie; the JSON body is optional for cookie authentication.")
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status403Forbidden);
 
             routes.MapPost("logout/all", async Task<IResult> (HttpContext context,
                 IUserManager<TUser> userManager,
@@ -158,7 +174,10 @@ namespace RuntimeApps.Authentication.Endpoints.RefreshTokens {
                     if(isCookie)
                         DeleteRefreshCookie(context, options.Value);
                     return Results.NoContent();
-                }).RequireAuthorization().WithName("Session_LogoutAll").WithTags("Sessions").WithSummary("Log out all sessions");
+                }).RequireAuthorization().WithName("Session_LogoutAll").WithTags("Sessions").WithSummary("Log out all sessions")
+                  .Produces(StatusCodes.Status204NoContent)
+                  .Produces(StatusCodes.Status401Unauthorized)
+                  .Produces(StatusCodes.Status403Forbidden);
 
             return endpoints;
         }

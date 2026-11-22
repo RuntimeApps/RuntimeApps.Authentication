@@ -37,6 +37,7 @@ namespace RuntimeApps.Authentication.Features.Registration.Services {
         public async Task<Result<RegistrationVerificationResponse>> RegisterAsync(
             TUser user, string password, CancellationToken cancellationToken = default) {
             ArgumentNullException.ThrowIfNull(user);
+            cancellationToken.ThrowIfCancellationRequested();
             if(string.IsNullOrWhiteSpace(user.Email) || string.IsNullOrEmpty(password))
                 return Failure("InvalidRegistration", "Email and password are required.");
 
@@ -44,6 +45,7 @@ namespace RuntimeApps.Authentication.Features.Registration.Services {
                 user.UserName = user.Email;
 
             var existingUser = await _emailManager.FindByEmailAsync(user.Email);
+            cancellationToken.ThrowIfCancellationRequested();
             // Do not create or modify confirmed accounts. Keep the response indistinguishable
             // from a pending registration to avoid exposing whether an email is registered.
             if(existingUser?.EmailConfirmed == true)
@@ -56,15 +58,12 @@ namespace RuntimeApps.Authentication.Features.Registration.Services {
                 user.EmailConfirmed = false;
                 var createResult = await _userManager.CreateAsync(user, password);
                 if(!createResult.Succeeded) {
-                    // A concurrent registration may have created the account after our initial lookup.
-                    var racedUser = await _emailManager.FindByEmailAsync(user.Email);
-                    if(racedUser?.EmailConfirmed == true)
+                    // Duplicate identifiers are intentionally indistinguishable from the
+                    // generic confirmed-account response. This also covers races between
+                    // the initial lookup and Identity's uniqueness check.
+                    if(createResult.Errors.Any(error => error.Code is "DuplicateEmail" or "DuplicateUserName"))
                         return GenericResponse();
-                    if(racedUser == null)
-                        return new Result<RegistrationVerificationResponse>(ResultCode.BadRequest, createResult.Errors);
-
-                    // Another request created this pending account first. Reuse it unchanged.
-                    user = racedUser;
+                    return new Result<RegistrationVerificationResponse>(ResultCode.BadRequest, createResult.Errors);
                 }
             }
 
@@ -72,6 +71,9 @@ namespace RuntimeApps.Authentication.Features.Registration.Services {
             var verificationResult = await _verification.StartAsync(
                 user, VerificationPurpose.Registration, VerificationChannel.Email, user.Email,
                 cancellationToken: cancellationToken);
+
+            if(!verificationResult.Succeeded && verificationResult.ErrorCode == "VerificationRateLimited")
+                return GenericResponse();
 
             if(!verificationResult.Succeeded)
                 return Failure(verificationResult.ErrorCode, verificationResult.ErrorDescription);

@@ -28,21 +28,39 @@ namespace RuntimeApps.Authentication.Endpoints.Account {
             RequireServices(endpoints, "Authentication", typeof(IUserAccountService<TUser>), typeof(IUserMapper<TUser, TUserDto>));
             var routeGroup = endpoints.MapGroup("").AllowAnonymous();
 
-            routeGroup.MapPost("login", async Task<Results<Ok<Result<TUserDto, Token>>, ValidationProblem>> ([FromBody] UserLoginModel userLoginModel, IUserAccountService<TUser> userAccountService, [FromServices] IUserMapper<TUser, TUserDto> mapper, HttpContext context) => {
+            routeGroup.MapPost("login", async Task<IResult> ([FromBody] UserLoginModel userLoginModel, IUserAccountService<TUser> userAccountService, [FromServices] IUserMapper<TUser, TUserDto> mapper, HttpContext context) => {
+                if(string.IsNullOrWhiteSpace(userLoginModel?.UserName) || string.IsNullOrEmpty(userLoginModel.Password))
+                    return ValidationProblemFactory.CreateValidationProblem("InvalidLogin", "User name and password are required.");
                 var result = await userAccountService.LoginAsync(userLoginModel.UserName, userLoginModel.Password, context.RequestAborted);
-                if(!result.Succeeded)
-                    return result.CreateValidationProblem();
+                if(!result.Succeeded) {
+                    // Keep the existing two-factor continuation response separate from credential failures.
+                    if(result.Code == ResultCode.Accepted)
+                        return TypedResults.Accepted((string)null, new AuthenticationContinuationResponse());
+                    // Keep unknown, unconfirmed, locked, and incorrect-password failures indistinguishable.
+                    return TypedResults.Problem(statusCode: StatusCodes.Status401Unauthorized,
+                        title: "Authentication failed", detail: "The username or password is incorrect.",
+                        extensions: new Dictionary<string, object> { ["code"] = "authentication_failed" });
+                }
                 return TypedResults.Ok(MapResult<TUser, TUserDto, TKey>(result, mapper));
-            }).WithName("Authentication_Login").WithTags("Authentication").WithSummary("Log in");
+            }).WithName("Authentication_Login").WithTags("Authentication").WithSummary("Log in")
+              .Produces<Result<TUserDto, Token>>(StatusCodes.Status200OK)
+              .Produces<AuthenticationContinuationResponse>(StatusCodes.Status202Accepted)
+              .ProducesValidationProblem(StatusCodes.Status400BadRequest)
+              .ProducesProblem(StatusCodes.Status401Unauthorized);
 
             if(endpoints.ServiceProvider.GetService<IServiceProviderIsService>()
                 ?.IsService(typeof(IExternalLoginProvider<TUser>)) == true) {
-                routeGroup.MapPost("login/external", async Task<Results<Ok<Result<TUserDto, Token>>, ValidationProblem>> ([FromBody] ExternalAuthModel request, IUserAccountService<TUser> userAccountService, [FromServices] IUserMapper<TUser, TUserDto> mapper, HttpContext context) => {
+                routeGroup.MapPost("login/external", async Task<IResult> ([FromBody] ExternalAuthModel request, IUserAccountService<TUser> userAccountService, [FromServices] IUserMapper<TUser, TUserDto> mapper, HttpContext context) => {
+                    if(string.IsNullOrWhiteSpace(request?.Provider) || string.IsNullOrWhiteSpace(request.Token))
+                        return ValidationProblemFactory.CreateValidationProblem("InvalidExternalLogin", "Provider and token are required.");
                     var result = await userAccountService.ExternalLoginAsync(request.Provider, request.Token, context.RequestAborted);
                     if(!result.Succeeded)
-                        return result.CreateValidationProblem();
+                        return PublicErrorFactory.CreateExternalAuthenticationFailure();
                     return TypedResults.Ok(MapResult<TUser, TUserDto, TKey>(result, mapper));
-                }).WithName("Authentication_ExternalLogin").WithTags("Authentication").WithSummary("Log in with an external provider");
+                }).WithName("Authentication_ExternalLogin").WithTags("Authentication").WithSummary("Log in with an external provider")
+                  .Produces<Result<TUserDto, Token>>(StatusCodes.Status200OK)
+                  .ProducesValidationProblem(StatusCodes.Status400BadRequest)
+                  .ProducesProblem(StatusCodes.Status401Unauthorized);
             }
 
             return endpoints;
@@ -63,7 +81,7 @@ namespace RuntimeApps.Authentication.Endpoints.Account {
 
             var routeGroup = endpoints.MapGroup("").AllowAnonymous();
 
-            routeGroup.MapPost("register", async Task<Results<Accepted<Result<RegistrationVerificationResponse>>, ValidationProblem>> (
+            routeGroup.MapPost("register", async Task<IResult> (
                 [FromBody] RegisterUserModel<TUserDto> user,
                 IRegistrationService<TUser, TKey> registrationService,
                 [FromServices] IUserMapper<TUser, TUserDto> mapper,
@@ -74,9 +92,11 @@ namespace RuntimeApps.Authentication.Endpoints.Account {
                     var result = await registrationService.RegisterAsync(
                         mapper.ToUser(user.UserInfo), user.Password, httpContext.RequestAborted);
                     if(!result.Succeeded)
-                        return result.CreateValidationProblem();
+                        return result.CreatePublicError();
                     return TypedResults.Accepted((string)null, result);
-                }).WithName("Registration_Register").WithTags("Registration").WithSummary("Register a user");
+                }).WithName("Registration_Register").WithTags("Registration").WithSummary("Register a user")
+                  .Produces<Result<RegistrationVerificationResponse>>(StatusCodes.Status202Accepted)
+                  .ProducesValidationProblem(StatusCodes.Status400BadRequest);
 
             return endpoints;
         }
@@ -88,7 +108,7 @@ namespace RuntimeApps.Authentication.Endpoints.Account {
             where TKey : IEquatable<TKey> {
             RequireServices(endpoints, "Verification", typeof(IRegistrationService<TUser, TKey>), typeof(IUserMapper<TUser, TUserDto>), typeof(IVerificationWorkflowService<TUser, TKey>), typeof(IVerificationRequestStore<TKey>), typeof(IVerificationSender<TUser, TKey>));
             var routeGroup = endpoints.MapGroup("").AllowAnonymous();
-            routeGroup.MapPost("register/verify", async Task<Results<Ok<Result<TUserDto, Token>>, ValidationProblem>> (
+            routeGroup.MapPost("register/verify", async Task<IResult> (
                 [FromBody] VerifyRegistrationModel request,
                 IRegistrationService<TUser, TKey> registrationService,
                 [FromServices] IUserMapper<TUser, TUserDto> mapper,
@@ -99,11 +119,14 @@ namespace RuntimeApps.Authentication.Endpoints.Account {
                     var result = await registrationService.VerifyAsync(
                         request.VerificationHandle, request.Code, httpContext.RequestAborted);
                     if(!result.Succeeded)
-                        return result.CreateValidationProblem();
+                        return result.CreatePublicError();
                     return TypedResults.Ok(MapResult<TUser, TUserDto, TKey>(result, mapper));
-                }).WithName("Verification_VerifyRegistration").WithTags("Verification").WithSummary("Verify a registration");
+                }).WithName("Verification_VerifyRegistration").WithTags("Verification").WithSummary("Verify a registration")
+                  .Produces<Result<TUserDto, Token>>(StatusCodes.Status200OK)
+                  .ProducesProblem(StatusCodes.Status403Forbidden)
+                  .ProducesValidationProblem(StatusCodes.Status400BadRequest);
 
-            routeGroup.MapPost("register/resend", async Task<Results<Accepted<Result<RegistrationVerificationResponse>>, ValidationProblem>> (
+            routeGroup.MapPost("register/resend", async Task<IResult> (
                 [FromBody] ResendRegistrationVerificationModel request,
                 IRegistrationService<TUser, TKey> registrationService,
                 HttpContext httpContext) => {
@@ -113,9 +136,11 @@ namespace RuntimeApps.Authentication.Endpoints.Account {
                     var result = await registrationService.ResendAsync(
                         request.VerificationHandle, httpContext.RequestAborted);
                     if(!result.Succeeded)
-                        return result.CreateValidationProblem();
+                        return result.CreatePublicError();
                     return TypedResults.Accepted((string)null, result);
-                }).WithName("Verification_ResendRegistration").WithTags("Verification").WithSummary("Resend registration verification");
+                }).WithName("Verification_ResendRegistration").WithTags("Verification").WithSummary("Resend registration verification")
+                  .Produces<Result<RegistrationVerificationResponse>>(StatusCodes.Status202Accepted)
+                  .ProducesValidationProblem(StatusCodes.Status400BadRequest);
 
             return endpoints;
         }
@@ -141,14 +166,16 @@ namespace RuntimeApps.Authentication.Endpoints.Account {
             else
                 routeGroup.RequireAuthorization(authorizationPolicy);
 
-            routeGroup.MapPost("", async Task<Results<Ok<TUserDto>, ValidationProblem>> (
+            routeGroup.MapPost("", async Task<IResult> (
                 [FromBody] RegisterUserModel<TUserDto> request,
                 IUserManager<TUser> userManager,
-                [FromServices] IUserMapper<TUser, TUserDto> mapper) => {
+                [FromServices] IUserMapper<TUser, TUserDto> mapper,
+                CancellationToken cancellationToken) => {
                     if(request?.UserInfo == null || string.IsNullOrEmpty(request.Password))
                         return ValidationProblemFactory.CreateValidationProblem(
                             "InvalidUser", "User information and password are required.");
 
+                    cancellationToken.ThrowIfCancellationRequested();
                     var user = mapper.ToUser(request.UserInfo);
                     if(string.IsNullOrWhiteSpace(user.UserName))
                         user.UserName = user.Email;
@@ -156,10 +183,13 @@ namespace RuntimeApps.Authentication.Endpoints.Account {
 
                     var result = await userManager.CreateAsync(user, request.Password);
                     if(!result.Succeeded)
-                        return result.CreateValidationProblem();
+                        return result.CreatePublicError();
 
                     return TypedResults.Ok(mapper.ToDto(user));
-                });
+                }).Produces<TUserDto>(StatusCodes.Status200OK)
+                  .ProducesValidationProblem(StatusCodes.Status400BadRequest)
+                  .Produces(StatusCodes.Status401Unauthorized)
+                  .Produces(StatusCodes.Status403Forbidden);
 
             return endpoints;
         }
@@ -172,42 +202,63 @@ namespace RuntimeApps.Authentication.Endpoints.Account {
             RequireServices(endpoints, "Account management", typeof(IUserManager<TUser>), typeof(IUserMapper<TUser, TUserDto>), typeof(IUserPasswordManager<TUser>));
             var authorizedRouteGroup = endpoints.MapGroup("").RequireAuthorization();
 
-            authorizedRouteGroup.MapGet("/", async (IUserManager<TUser> userManager, HttpContext httpContext, IUserMapper<TUser, TUserDto> mapper) => {
+            authorizedRouteGroup.MapGet("/", async Task<IResult> (IUserManager<TUser> userManager, HttpContext httpContext, IUserMapper<TUser, TUserDto> mapper, CancellationToken cancellationToken) => {
+                cancellationToken.ThrowIfCancellationRequested();
                 var user = await userManager.GetUserAsync(httpContext.User);
-                return user != null ? mapper.ToDto(user) : null;
-            }).WithName("AccountManagement_Get").WithTags("Account management").WithSummary("Get the current account");
+                cancellationToken.ThrowIfCancellationRequested();
+                return user != null ? TypedResults.Ok(mapper.ToDto(user)) : TypedResults.Unauthorized();
+            }).WithName("AccountManagement_Get").WithTags("Account management").WithSummary("Get the current account")
+              .Produces<TUserDto>(StatusCodes.Status200OK)
+              .Produces(StatusCodes.Status401Unauthorized)
+              .Produces(StatusCodes.Status403Forbidden);
 
-            authorizedRouteGroup.MapPost("password/change", async Task<Results<Ok, ValidationProblem>> ([FromBody] ChangePasswordModel input, IUserManager<TUser> userManager, IUserPasswordManager<TUser> passwordManager, HttpContext httpContext, IServiceProvider services) => {
+            authorizedRouteGroup.MapPost("password/change", async Task<IResult> ([FromBody] ChangePasswordModel input, IUserManager<TUser> userManager, IUserPasswordManager<TUser> passwordManager, HttpContext httpContext, IServiceProvider services, CancellationToken cancellationToken) => {
+                if(string.IsNullOrEmpty(input?.CurrentPassword) || string.IsNullOrEmpty(input.NewPassword))
+                    return ValidationProblemFactory.CreateValidationProblem("InvalidPassword", "Current and new passwords are required.");
+                cancellationToken.ThrowIfCancellationRequested();
                 var user = await userManager.GetUserAsync(httpContext.User);
                 if(user == null)
-                    return ValidationProblemFactory.CreateValidationProblem("NoAccess", "Cannot change password without login");
+                    return TypedResults.Unauthorized();
 
+                cancellationToken.ThrowIfCancellationRequested();
                 var result = await passwordManager.ChangePasswordAsync(user, input.CurrentPassword, input.NewPassword);
                 if(!result.Succeeded)
-                    return result.CreateValidationProblem();
+                    return result.CreatePublicError();
 
                 var refreshTokenService = services.GetService<IRefreshTokenService<TKey>>();
                 if(refreshTokenService != null)
-                    await refreshTokenService.RevokeAllAsync(user.Id, httpContext.RequestAborted);
+                    await refreshTokenService.RevokeAllAsync(user.Id, CancellationToken.None);
 
                 return TypedResults.Ok();
-            }).WithName("AccountManagement_ChangePassword").WithTags("Account management").WithSummary("Change the current password");
+            }).WithName("AccountManagement_ChangePassword").WithTags("Account management").WithSummary("Change the current password")
+              .Produces(StatusCodes.Status200OK)
+              .ProducesValidationProblem(StatusCodes.Status400BadRequest)
+              .Produces(StatusCodes.Status401Unauthorized)
+              .Produces(StatusCodes.Status403Forbidden);
 
-            authorizedRouteGroup.MapPost("password", async Task<Results<Ok, ValidationProblem>> ([FromBody] string password, IUserManager<TUser> userManager, IUserPasswordManager<TUser> passwordManager, HttpContext httpContext, IServiceProvider services) => {
+            authorizedRouteGroup.MapPost("password", async Task<IResult> ([FromBody] AddPasswordRequest request, IUserManager<TUser> userManager, IUserPasswordManager<TUser> passwordManager, HttpContext httpContext, IServiceProvider services, CancellationToken cancellationToken) => {
+                cancellationToken.ThrowIfCancellationRequested();
                 var user = await userManager.GetUserAsync(httpContext.User);
                 if(user == null)
-                    return ValidationProblemFactory.CreateValidationProblem("NoAccess", "Cannot change password without login");
+                    return TypedResults.Unauthorized();
+                if(string.IsNullOrEmpty(request?.Password))
+                    return ValidationProblemFactory.CreateValidationProblem("InvalidPassword", "Password is required.");
 
-                var result = await passwordManager.AddPasswordAsync(user, password);
+                cancellationToken.ThrowIfCancellationRequested();
+                var result = await passwordManager.AddPasswordAsync(user, request?.Password);
                 if(!result.Succeeded)
-                    return result.CreateValidationProblem();
+                    return result.CreatePublicError();
 
                 var refreshTokenService = services.GetService<IRefreshTokenService<TKey>>();
                 if(refreshTokenService != null)
-                    await refreshTokenService.RevokeAllAsync(user.Id, httpContext.RequestAborted);
+                    await refreshTokenService.RevokeAllAsync(user.Id, CancellationToken.None);
 
                 return TypedResults.Ok();
-            }).WithName("AccountManagement_AddPassword").WithTags("Account management").WithSummary("Add a password to the current account");
+            }).WithName("AccountManagement_AddPassword").WithTags("Account management").WithSummary("Add a password to the current account")
+              .Produces(StatusCodes.Status200OK)
+              .ProducesValidationProblem(StatusCodes.Status400BadRequest)
+              .Produces(StatusCodes.Status401Unauthorized)
+              .Produces(StatusCodes.Status403Forbidden);
 
             return endpoints;
         }

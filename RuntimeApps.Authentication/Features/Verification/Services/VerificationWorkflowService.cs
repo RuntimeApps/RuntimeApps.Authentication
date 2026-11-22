@@ -83,18 +83,34 @@ namespace RuntimeApps.Authentication.Features.Verification.Services {
                 Status = VerificationRequestStatus.Pending
             };
 
-            if(!await _store.TryCreateAsync(request, now.AddHours(-1), _options.MaximumSendsPerHour, cancellationToken))
+            bool requestCreated;
+            try {
+                requestCreated = await _store.TryCreateAsync(
+                    request, now.AddHours(-1), _options.MaximumSendsPerHour, cancellationToken);
+            } catch(OperationCanceledException) when(cancellationToken.IsCancellationRequested) {
+                // A relational commit may win the race with cancellation. If the request is
+                // present, finish its verifier and delivery so it is not left unusable.
+                var persisted = await _store.FindByHandleHashAsync(request.PublicHandleHash, CancellationToken.None);
+                if(persisted == null)
+                    throw;
+                request = persisted;
+                requestCreated = true;
+            }
+
+            if(!requestCreated)
                 return VerificationOperationResult.Failure("VerificationRateLimited", "The verification send limit has been reached.");
 
-            var credential = await CreateCredentialAsync(user, request, handle, cancellationToken);
+            // The request is now persisted. Complete verifier setup and delivery even if the
+            // HTTP request is aborted so we do not leave a pending handle with no credential.
+            var credential = await CreateCredentialAsync(user, request, handle, CancellationToken.None);
             if(string.IsNullOrWhiteSpace(credential))
                 return VerificationOperationResult.Failure("VerificationCodeGenerationFailed", "A verification credential could not be generated.");
             var protectedVerifier = _verifier.CreateVerifier(credential, request);
-            if(!await _store.TrySetInitialVerifierAsync(request.Id, protectedVerifier, now, request.ExpiresAt, cancellationToken))
+            if(!await _store.TrySetInitialVerifierAsync(request.Id, protectedVerifier, now, request.ExpiresAt, CancellationToken.None))
                 return VerificationOperationResult.Failure("VerificationRequestUnavailable", "The verification request could not be initialized.");
 
             var context = CreateContext(user, request, handle, credential);
-            await _sender.SendAsync(context, credential, request.ExpiresAt, cancellationToken);
+            await _sender.SendAsync(context, credential, request.ExpiresAt, CancellationToken.None);
             return VerificationOperationResult.Success(handle, request.ExpiresAt);
         }
 
@@ -119,11 +135,26 @@ namespace RuntimeApps.Authentication.Features.Verification.Services {
                 return VerificationOperationResult.Failure("VerificationCodeGenerationFailed", "A verification credential could not be generated.");
             var newVerifier = _verifier.CreateVerifier(credential, request);
             var expiresAt = now.Add(_options.CodeLifetime);
-            if(!await _store.TryResendAsync(request.Id, request.CodeVersion, newVerifier, now, expiresAt,
-                _options.ResendCooldown, now.AddHours(-1), _options.MaximumSendsPerHour, cancellationToken))
+            bool resendCommitted;
+            try {
+                resendCommitted = await _store.TryResendAsync(request.Id, request.CodeVersion, newVerifier, now, expiresAt,
+                    _options.ResendCooldown, now.AddHours(-1), _options.MaximumSendsPerHour, cancellationToken);
+            } catch(OperationCanceledException) when(cancellationToken.IsCancellationRequested) {
+                // If the atomic version update committed while cancellation was racing with
+                // the database response, finish delivery using the credential for that version.
+                var persisted = await _store.FindByHandleHashAsync(
+                    request.PublicHandleHash, CancellationToken.None);
+                resendCommitted = persisted?.Status == VerificationRequestStatus.Pending &&
+                    persisted.CodeVersion == request.CodeVersion + 1 && persisted.LastSentAt == now;
+                if(!resendCommitted)
+                    throw;
+            }
+
+            if(!resendCommitted)
                 return VerificationOperationResult.Failure("VerificationResendUnavailable", "The verification request cannot be resent yet.");
 
-            await _sender.SendAsync(CreateContext(user, request, verificationHandle, credential), credential, expiresAt, cancellationToken);
+            // The verifier/version update is committed; delivery is essential follow-through.
+            await _sender.SendAsync(CreateContext(user, request, verificationHandle, credential), credential, expiresAt, CancellationToken.None);
             return VerificationOperationResult.Success(verificationHandle, expiresAt);
         }
 
