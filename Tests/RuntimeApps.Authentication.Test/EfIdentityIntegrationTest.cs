@@ -43,7 +43,9 @@ namespace RuntimeApps.Authentication.Test {
                 .AddEfStores<EmptyDbContext, IdentityUser<int>, IdentityRole<int>, int>();
 
             await using var provider = services.BuildServiceProvider();
-            var validator = Assert.Single(provider.GetServices<IHostedService>());
+            var validator = Assert.Single(
+                provider.GetServices<IHostedService>(),
+                service => service.GetType().Name.StartsWith("EfIdentityModelStartupValidator", StringComparison.Ordinal));
             var exception = await Assert.ThrowsAsync<InvalidOperationException>(
                 () => validator.StartAsync(TestContext.Current.CancellationToken));
             Assert.Contains("IdentityUserClaim", exception.Message);
