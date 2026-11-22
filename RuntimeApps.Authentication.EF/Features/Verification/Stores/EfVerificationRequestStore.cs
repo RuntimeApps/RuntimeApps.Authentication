@@ -6,6 +6,8 @@ namespace RuntimeApps.Authentication.EF.Features.Verification.Stores {
     /// <summary>
     /// Relational EF Core implementation. Conditional updates and serializable transactions protect
     /// request state transitions and destination-level send limits against concurrent requests.
+    /// Transactions run inside the DbContext execution strategy, so providers configured with
+    /// retry-on-failure are supported.
     /// </summary>
     public sealed class EfVerificationRequestStore<TDbContext, TKey>: IVerificationRequestStore<TKey>
         where TDbContext : DbContext
@@ -41,48 +43,85 @@ namespace RuntimeApps.Authentication.EF.Features.Verification.Stores {
         private IQueryable<VerificationRequest<TKey>> Requests => _dbContext.Set<VerificationRequest<TKey>>();
         private IQueryable<VerificationSend> Sends => _dbContext.Set<VerificationSend>();
 
+        private void Detach(object entity) {
+            var entry = _dbContext.Entry(entity);
+            if(entry.State != EntityState.Detached)
+                entry.State = EntityState.Detached;
+        }
+
+        private void ResetRequest(VerificationRequest<TKey> request, TKey originalId) {
+            Detach(request);
+            request.Id = originalId;
+        }
+
         public async Task<bool> TryCreateAsync(
             VerificationRequest<TKey> request,
             DateTimeOffset sendsSince,
             int maximumSendsPerHour,
             CancellationToken cancellationToken = default) {
             EnsureRelational();
-            await using var transaction = await _dbContext.Database.BeginTransactionAsync(
-                IsolationLevel.Serializable, cancellationToken);
-
-            await Sends.Where(item => item.SentAt < sendsSince).ExecuteDeleteAsync(cancellationToken);
-
-            var sendCount = await Sends.CountAsync(item =>
-                item.NormalizedDestination == request.NormalizedDestination &&
-                item.Purpose == request.Purpose &&
-                item.Channel == request.Channel &&
-                item.SentAt >= sendsSince, cancellationToken);
-
-            if(sendCount >= maximumSendsPerHour) {
-                await transaction.RollbackAsync(cancellationToken);
-                return false;
-            }
-
-            await Requests.Where(item =>
-                    object.Equals(item.UserId, request.UserId) &&
-                    item.Purpose == request.Purpose &&
-                    item.Channel == request.Channel &&
-                    item.NormalizedDestination == request.NormalizedDestination &&
-                    item.Status == VerificationRequestStatus.Pending)
-                .ExecuteUpdateAsync(setters => setters.SetProperty(
-                    item => item.Status, VerificationRequestStatus.Superseded), cancellationToken);
-
+            // Generated keys (Guid/string) are assigned once; database-generated integer keys are reset per attempt.
             PrepareGeneratedId(request);
-            await _dbContext.Set<VerificationRequest<TKey>>().AddAsync(request, cancellationToken);
-            await _dbContext.Set<VerificationSend>().AddAsync(new VerificationSend {
-                NormalizedDestination = request.NormalizedDestination,
-                Purpose = request.Purpose,
-                Channel = request.Channel,
-                SentAt = request.CreatedAt
-            }, cancellationToken);
-            await _dbContext.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-            return true;
+            var originalId = request.Id;
+
+            var strategy = _dbContext.Database.CreateExecutionStrategy();
+            return await strategy.ExecuteAsync(async () => {
+                ResetRequest(request, originalId);
+                VerificationSend send = null;
+                var committed = false;
+                try {
+                    await using var transaction = await _dbContext.Database.BeginTransactionAsync(
+                        IsolationLevel.Serializable, cancellationToken);
+
+                    await Sends.Where(item => item.SentAt < sendsSince).ExecuteDeleteAsync(cancellationToken);
+
+                    var sendCount = await Sends.CountAsync(item =>
+                        item.NormalizedDestination == request.NormalizedDestination &&
+                        item.Purpose == request.Purpose &&
+                        item.Channel == request.Channel &&
+                        item.CustomPurpose == request.CustomPurpose &&
+                        item.CustomChannel == request.CustomChannel &&
+                        item.SentAt >= sendsSince, cancellationToken);
+
+                    if(sendCount >= maximumSendsPerHour) {
+                        await transaction.RollbackAsync(cancellationToken);
+                        return false;
+                    }
+
+                    await Requests.Where(item =>
+                            object.Equals(item.UserId, request.UserId) &&
+                            item.Purpose == request.Purpose &&
+                            item.Channel == request.Channel &&
+                            item.CustomPurpose == request.CustomPurpose &&
+                            item.CustomChannel == request.CustomChannel &&
+                            item.NormalizedDestination == request.NormalizedDestination &&
+                            item.Status == VerificationRequestStatus.Pending)
+                        .ExecuteUpdateAsync(setters => setters.SetProperty(
+                            item => item.Status, VerificationRequestStatus.Superseded), cancellationToken);
+
+                    await _dbContext.Set<VerificationRequest<TKey>>().AddAsync(request, cancellationToken);
+                    send = new VerificationSend {
+                        NormalizedDestination = request.NormalizedDestination,
+                        Purpose = request.Purpose,
+                        Channel = request.Channel,
+                        CustomPurpose = request.CustomPurpose,
+                        CustomChannel = request.CustomChannel,
+                        SentAt = request.CreatedAt
+                    };
+                    await _dbContext.Set<VerificationSend>().AddAsync(send, cancellationToken);
+                    await _dbContext.SaveChangesAsync(cancellationToken);
+                    await transaction.CommitAsync(cancellationToken);
+                    committed = true;
+                    return true;
+                } finally {
+                    // Keep the shared scoped context free of rows that were rolled back or failed.
+                    if(!committed) {
+                        ResetRequest(request, originalId);
+                        if(send != null)
+                            Detach(send);
+                    }
+                }
+            });
         }
 
         public async Task<bool> TrySetInitialVerifierAsync(
@@ -122,54 +161,75 @@ namespace RuntimeApps.Authentication.EF.Features.Verification.Stores {
             int maximumSendsPerHour,
             CancellationToken cancellationToken = default) {
             EnsureRelational();
-            await using var transaction = await _dbContext.Database.BeginTransactionAsync(
-                IsolationLevel.Serializable, cancellationToken);
 
-            var request = await Requests.SingleOrDefaultAsync(item => item.Id.Equals(requestId), cancellationToken);
-            if(request == null || request.Status != VerificationRequestStatus.Pending ||
-               request.LastSentAt > now - resendCooldown) {
-                await transaction.RollbackAsync(cancellationToken);
-                return false;
-            }
+            var strategy = _dbContext.Database.CreateExecutionStrategy();
+            return await strategy.ExecuteAsync(async () => {
+                VerificationSend send = null;
+                var committed = false;
+                try {
+                    await using var transaction = await _dbContext.Database.BeginTransactionAsync(
+                        IsolationLevel.Serializable, cancellationToken);
 
-            await Sends.Where(item => item.SentAt < sendsSince).ExecuteDeleteAsync(cancellationToken);
+                    // No-tracking read: the row is changed with ExecuteUpdate below, so a tracked copy would go stale.
+                    var request = await Requests.AsNoTracking()
+                        .SingleOrDefaultAsync(item => item.Id.Equals(requestId), cancellationToken);
+                    if(request == null || request.Status != VerificationRequestStatus.Pending ||
+                       request.LastSentAt > now - resendCooldown) {
+                        await transaction.RollbackAsync(cancellationToken);
+                        return false;
+                    }
 
-            var sendCount = await Sends.CountAsync(item =>
-                item.NormalizedDestination == request.NormalizedDestination &&
-                item.Purpose == request.Purpose &&
-                item.Channel == request.Channel &&
-                item.SentAt >= sendsSince, cancellationToken);
-            if(sendCount >= maximumSendsPerHour) {
-                await transaction.RollbackAsync(cancellationToken);
-                return false;
-            }
+                    await Sends.Where(item => item.SentAt < sendsSince).ExecuteDeleteAsync(cancellationToken);
 
-            var affected = await Requests.Where(item =>
-                    item.Id.Equals(requestId) &&
-                    item.Status == VerificationRequestStatus.Pending &&
-                    item.CodeVersion == expectedCodeVersion &&
-                    item.LastSentAt <= now - resendCooldown)
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(item => item.CodeVerifier, newCodeVerifier)
-                    .SetProperty(item => item.CodeVersion, item => item.CodeVersion + 1)
-                    .SetProperty(item => item.SendCount, item => item.SendCount + 1)
-                    .SetProperty(item => item.LastSentAt, now)
-                    .SetProperty(item => item.ExpiresAt, expiresAt), cancellationToken);
+                    var customPurpose = request.CustomPurpose;
+                    var customChannel = request.CustomChannel;
+                    var sendCount = await Sends.CountAsync(item =>
+                        item.NormalizedDestination == request.NormalizedDestination &&
+                        item.Purpose == request.Purpose &&
+                        item.Channel == request.Channel &&
+                        item.CustomPurpose == customPurpose &&
+                        item.CustomChannel == customChannel &&
+                        item.SentAt >= sendsSince, cancellationToken);
+                    if(sendCount >= maximumSendsPerHour) {
+                        await transaction.RollbackAsync(cancellationToken);
+                        return false;
+                    }
 
-            if(affected != 1) {
-                await transaction.RollbackAsync(cancellationToken);
-                return false;
-            }
+                    var affected = await Requests.Where(item =>
+                            item.Id.Equals(requestId) &&
+                            item.Status == VerificationRequestStatus.Pending &&
+                            item.CodeVersion == expectedCodeVersion &&
+                            item.LastSentAt <= now - resendCooldown)
+                        .ExecuteUpdateAsync(setters => setters
+                            .SetProperty(item => item.CodeVerifier, newCodeVerifier)
+                            .SetProperty(item => item.CodeVersion, item => item.CodeVersion + 1)
+                            .SetProperty(item => item.SendCount, item => item.SendCount + 1)
+                            .SetProperty(item => item.LastSentAt, now)
+                            .SetProperty(item => item.ExpiresAt, expiresAt), cancellationToken);
 
-            await _dbContext.Set<VerificationSend>().AddAsync(new VerificationSend {
-                NormalizedDestination = request.NormalizedDestination,
-                Purpose = request.Purpose,
-                Channel = request.Channel,
-                SentAt = now
-            }, cancellationToken);
-            await _dbContext.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-            return true;
+                    if(affected != 1) {
+                        await transaction.RollbackAsync(cancellationToken);
+                        return false;
+                    }
+
+                    send = new VerificationSend {
+                        NormalizedDestination = request.NormalizedDestination,
+                        Purpose = request.Purpose,
+                        Channel = request.Channel,
+                        CustomPurpose = customPurpose,
+                        CustomChannel = customChannel,
+                        SentAt = now
+                    };
+                    await _dbContext.Set<VerificationSend>().AddAsync(send, cancellationToken);
+                    await _dbContext.SaveChangesAsync(cancellationToken);
+                    await transaction.CommitAsync(cancellationToken);
+                    committed = true;
+                    return true;
+                } finally {
+                    if(!committed && send != null)
+                        Detach(send);
+                }
+            });
         }
 
         public async Task<bool> TryIncrementFailedAttemptsAsync(

@@ -62,28 +62,54 @@ namespace RuntimeApps.Authentication.EF.Features.RefreshTokens.Stores {
             if(!_dbContext.Database.IsRelational())
                 throw new NotSupportedException("Atomic refresh-token rotation requires a relational EF Core provider.");
 
-            await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+            // Generated keys (Guid/string) are assigned once so every retry attempt reuses the same value.
+            // Database-generated integer keys stay at their default and are reset before each attempt.
             PrepareGeneratedId(replacement);
-            await _dbContext.Set<RefreshToken<TKey>>().AddAsync(replacement, cancellationToken);
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            var originalId = replacement.Id;
 
-            var affected = await _dbContext.Set<RefreshToken<TKey>>()
-                .Where(token => token.Id.Equals(tokenId) &&
-                                token.TokenHash == expectedTokenHash &&
-                                token.RevokedAt == null &&
-                                token.ExpiresAt > now)
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(token => token.RevokedAt, now)
-                    .SetProperty(token => token.ReplacedByTokenId, replacement.Id)
-                    .SetProperty(token => token.HasReplacement, true), cancellationToken);
+            // User-initiated transactions must run inside the execution strategy so providers configured
+            // with retry-on-failure (for example EnableRetryOnFailure) retry the whole unit.
+            var strategy = _dbContext.Database.CreateExecutionStrategy();
+            return await strategy.ExecuteAsync(async () => {
+                ResetReplacement(replacement, originalId);
+                var committed = false;
+                try {
+                    await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+                    await _dbContext.Set<RefreshToken<TKey>>().AddAsync(replacement, cancellationToken);
+                    await _dbContext.SaveChangesAsync(cancellationToken);
 
-            if(affected != 1) {
-                await transaction.RollbackAsync(cancellationToken);
-                return false;
-            }
+                    var affected = await _dbContext.Set<RefreshToken<TKey>>()
+                        .Where(token => token.Id.Equals(tokenId) &&
+                                        token.TokenHash == expectedTokenHash &&
+                                        token.RevokedAt == null &&
+                                        token.ExpiresAt > now)
+                        .ExecuteUpdateAsync(setters => setters
+                            .SetProperty(token => token.RevokedAt, now)
+                            .SetProperty(token => token.ReplacedByTokenId, replacement.Id)
+                            .SetProperty(token => token.HasReplacement, true), cancellationToken);
 
-            await transaction.CommitAsync(cancellationToken);
-            return true;
+                    if(affected != 1) {
+                        await transaction.RollbackAsync(cancellationToken);
+                        return false;
+                    }
+
+                    await transaction.CommitAsync(cancellationToken);
+                    committed = true;
+                    return true;
+                } finally {
+                    // A rolled-back or failed insert must not stay tracked as a persisted row in the
+                    // shared scoped context (it is shared with the Identity stores).
+                    if(!committed)
+                        ResetReplacement(replacement, originalId);
+                }
+            });
+        }
+
+        private void ResetReplacement(RefreshToken<TKey> replacement, TKey originalId) {
+            var entry = _dbContext.Entry(replacement);
+            if(entry.State != EntityState.Detached)
+                entry.State = EntityState.Detached;
+            replacement.Id = originalId;
         }
 
         public async Task RevokeFamilyAsync(Guid familyId, DateTimeOffset revokedAt, CancellationToken cancellationToken = default) {
