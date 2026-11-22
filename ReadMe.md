@@ -233,6 +233,47 @@ Revoking refresh tokens does not immediately invalidate access JWTs already issu
 Applications that do not use the EF integration can implement `IRefreshTokenStore<TKey>` and register it before startup. Store implementations must make `TryRotateAsync` atomic: consuming the old token and persisting its replacement must succeed or fail as one operation. A non-atomic implementation is not safe for production use.
 
 
+## EF Core integration
+
+### Identity stores
+
+`AddEfStores<TDbContext, TUser, TRole, TKey>()` registers the ASP.NET Core Identity EF stores. `TDbContext` can be any `DbContext`: it does not have to derive from `IdentityDbContext`, but its model must contain the default Identity entities for your user, role and key types (`TUser`, `TRole`, `IdentityUserClaim<TKey>`, `IdentityUserRole<TKey>`, `IdentityUserLogin<TKey>`, `IdentityUserToken<TKey>`, `IdentityRoleClaim<TKey>`). The application fails at startup with a message listing any missing entity. Custom claim, login, token or user-role entity types (the eight-argument `IdentityDbContext`) are not supported by the built-in stores; implement your own stores for that case (see the Custom Store sample).
+
+### Model configuration
+
+Add the entities of the features you use in `OnModelCreating`. Each method is independent; call only the ones you need:
+
+```cs
+protected override void OnModelCreating(ModelBuilder modelBuilder) {
+    base.OnModelCreating(modelBuilder);
+    modelBuilder.AddRefreshTokenEntity<int>();
+    modelBuilder.AddVerificationRequestEntity<int>();
+}
+```
+
+Table names or schemas can be changed with ordinary EF Core calls afterwards, for example `modelBuilder.Entity<RefreshToken<int>>().ToTable("RefreshTokens", "auth")`.
+
+### Supported providers and limitations
+
+- Refresh-token and verification stores require a **relational** provider. Rotation, resend and send limits use transactions and conditional updates; EF InMemory is not supported and throws `NotSupportedException`.
+- The repository's tests run against SQLite. SQL Server and PostgreSQL are expected to work but are not covered by automated tests in this repository.
+- Transactions run inside the DbContext execution strategy, so `EnableRetryOnFailure` (and equivalent provider settings) is supported.
+- Verification create and resend use `Serializable` transactions. Under heavy concurrency, providers can abort a transaction (deadlock or serialization failure). Configure a retrying execution strategy if this matters for your workload.
+- `VerificationRequest.CodeVerifier` uses an empty string as an "initial" marker. Providers that treat empty strings as `NULL` (for example Oracle) are not supported.
+- Dates are stored with `DateTimeOffsetToBinaryConverter` (a `bigint`, millisecond precision) so that expiry comparisons work on every relational provider, including SQLite.
+- `UserId` columns do not have a foreign key to your users table. Rows for deleted users remain until they expire, and the refresh endpoint rejects (and revokes) a refreshed session whose user no longer exists. To add a foreign key, configure it in your own `OnModelCreating` (for example `modelBuilder.Entity<RefreshToken<int>>().HasOne<IdentityUser<int>>().WithMany().HasForeignKey(token => token.UserId).OnDelete(DeleteBehavior.Cascade)`) and remove orphaned rows before applying the migration. Purging expired rows is the application's responsibility for now.
+
+### Migration impact
+
+Adding entities requires a migration for the tables you enable. When upgrading an existing database that already contains the verification tables, add two nullable columns to `AuthenticationVerificationSends`:
+
+| Column | Type |
+| --- | --- |
+| `CustomPurpose` | `nvarchar(128)` / provider equivalent, nullable |
+| `CustomChannel` | `nvarchar(128)` / provider equivalent, nullable |
+
+`dotnet ef migrations add <Name>` generates this change. Existing rows keep `NULL` values, which match requests without a custom purpose or channel. Send limits and "supersede pending request" behavior are now scoped per custom purpose and custom channel, so two different custom purposes for the same destination no longer affect each other. No other column, index or table name changes were made.
+
 ## Registration with email verification
 
 Public registration uses a verification workflow instead of issuing an access token immediately. This is a major-version API change: `IUserAccountService.RegisterAsync` has been replaced by `IRegistrationService<TUser, TKey>`.

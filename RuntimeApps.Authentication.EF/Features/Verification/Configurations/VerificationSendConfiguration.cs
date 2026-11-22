@@ -11,6 +11,10 @@ namespace RuntimeApps.Authentication.EF.Features.Verification.Configurations {
             builder.Property(send => send.NormalizedDestination).HasMaxLength(512).IsRequired();
             builder.Property(send => send.Purpose).HasConversion<string>().HasMaxLength(32).IsRequired();
             builder.Property(send => send.Channel).HasConversion<string>().HasMaxLength(32).IsRequired();
+            // Nullable and intentionally not part of the index: the index prefix still narrows the
+            // lookup, and wider keys would exceed index size limits on some providers.
+            builder.Property(send => send.CustomPurpose).HasMaxLength(128);
+            builder.Property(send => send.CustomChannel).HasMaxLength(128);
             builder.Property(send => send.SentAt).HasConversion(new DateTimeOffsetToBinaryConverter());
             builder.HasIndex(send => send.SentAt);
             builder.HasIndex(send => new {
