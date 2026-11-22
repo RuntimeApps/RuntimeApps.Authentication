@@ -55,11 +55,12 @@ namespace RuntimeApps.Authentication.Endpoints.Account {
                         return ValidationProblemFactory.CreateValidationProblem("InvalidExternalLogin", "Provider and token are required.");
                     var result = await userAccountService.ExternalLoginAsync(request.Provider, request.Token, context.RequestAborted);
                     if(!result.Succeeded)
-                        return result.CreatePublicError();
+                        return PublicErrorFactory.CreateExternalAuthenticationFailure();
                     return TypedResults.Ok(MapResult<TUser, TUserDto, TKey>(result, mapper));
                 }).WithName("Authentication_ExternalLogin").WithTags("Authentication").WithSummary("Log in with an external provider")
                   .Produces<Result<TUserDto, Token>>(StatusCodes.Status200OK)
-                  .ProducesValidationProblem(StatusCodes.Status400BadRequest);
+                  .ProducesValidationProblem(StatusCodes.Status400BadRequest)
+                  .ProducesProblem(StatusCodes.Status401Unauthorized);
             }
 
             return endpoints;

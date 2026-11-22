@@ -299,7 +299,7 @@ External provider login does not require a second email challenge by default. Se
 
 External authentication and email confirmation remain separate. The default trust policy accepts verified Google Gmail/Googlemail addresses and verified Google Workspace addresses when the signed hosted-domain claim matches the email domain. Facebook and Microsoft email claims are not trusted by default. Developers can replace `IExternalLoginEmailTrustPolicy<TUser>`.
 
-External identities are not automatically linked to an existing local account based on a matching email address. Linking must be initiated from an authenticated account-management flow.
+When the configured trust policy approves a provider's email claim, external login may automatically link that identity to a local account with the same email. Matching email alone is never sufficient: untrusted or unverified claims are rejected before the account lookup. Applications that do not want trusted-email auto-linking should use a trust policy that approves no claims and provide linking through an authenticated account-management flow.
 
 ### Migration note
 

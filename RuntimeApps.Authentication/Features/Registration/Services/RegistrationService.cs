@@ -72,6 +72,9 @@ namespace RuntimeApps.Authentication.Features.Registration.Services {
                 user, VerificationPurpose.Registration, VerificationChannel.Email, user.Email,
                 cancellationToken: cancellationToken);
 
+            if(!verificationResult.Succeeded && verificationResult.ErrorCode == "VerificationRateLimited")
+                return GenericResponse();
+
             if(!verificationResult.Succeeded)
                 return Failure(verificationResult.ErrorCode, verificationResult.ErrorDescription);
 

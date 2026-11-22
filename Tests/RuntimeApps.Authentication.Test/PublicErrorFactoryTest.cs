@@ -46,28 +46,24 @@ public class PublicErrorFactoryTest {
     }
 
     [Fact]
-    public async Task EquivalentExternalAuthenticationFailures_HaveIdenticalPublicResponses() {
-        static Result Failure() => new(ResultCode.BadRequest,
-            Result.CreateErrors("ExternalAuthenticationFailed", "External authentication could not be completed."));
-        static async Task<(int Status, string Body)> Execute(Result result) {
+    public async Task External_authentication_failures_are_generic_401_problem_details() {
+        static async Task<(int Status, string Body)> Execute() {
             var context = new DefaultHttpContext();
             context.RequestServices = new ServiceCollection().AddLogging().AddProblemDetails().BuildServiceProvider();
             await using var body = new MemoryStream();
             context.Response.Body = body;
-            await result.CreatePublicError().ExecuteAsync(context);
+            await PublicErrorFactory.CreateExternalAuthenticationFailure().ExecuteAsync(context);
             body.Position = 0;
             return (context.Response.StatusCode, await new StreamReader(body).ReadToEndAsync());
         }
 
-        var untrustedExistingAccount = await Execute(Failure());
-        var untrustedNewEmail = await Execute(Failure());
-
-        Assert.Equal(untrustedExistingAccount.Status, untrustedNewEmail.Status);
-        static string WithoutTraceId(string body) {
-            var problem = JsonNode.Parse(body)!.AsObject();
-            problem.Remove("traceId");
-            return problem.ToJsonString();
-        }
-        Assert.Equal(WithoutTraceId(untrustedExistingAccount.Body), WithoutTraceId(untrustedNewEmail.Body));
+        var (status, body) = await Execute();
+        status.Should().Be(StatusCodes.Status401Unauthorized);
+        var problem = JsonNode.Parse(body)!.AsObject();
+        problem["title"]!.GetValue<string>().Should().Be("Authentication failed");
+        problem["detail"]!.GetValue<string>().Should().Be("External authentication could not be completed.");
+        problem["status"]!.GetValue<int>().Should().Be(StatusCodes.Status401Unauthorized);
+        problem["code"]!.GetValue<string>().Should().Be("external_authentication_failed");
+        body.Should().NotContain("Identity").And.NotContain("provider-specific").And.NotContain("account exists");
     }
 }

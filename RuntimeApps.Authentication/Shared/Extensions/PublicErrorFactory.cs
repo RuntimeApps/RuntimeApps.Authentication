@@ -6,6 +6,11 @@ using RuntimeApps.Authentication.Shared.Models;
 namespace RuntimeApps.Authentication.Shared.Extensions {
     /// <summary>Maps internal results to safe, stable HTTP error contracts.</summary>
     public static class PublicErrorFactory {
+        public static IResult CreateExternalAuthenticationFailure() =>
+            TypedResults.Problem(statusCode: StatusCodes.Status401Unauthorized,
+                title: "Authentication failed", detail: "External authentication could not be completed.",
+                extensions: new Dictionary<string, object> { ["code"] = "external_authentication_failed" });
+
         public static IResult CreatePublicError(this IdentityResult result) =>
             new Result(ResultCode.BadRequest, result?.Errors ?? Enumerable.Empty<IdentityError>()).CreatePublicError();
 
