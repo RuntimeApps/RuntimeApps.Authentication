@@ -70,7 +70,7 @@ namespace RuntimeApps.Authentication.Test {
 
             using var scope = provider.CreateScope();
             await scope.ServiceProvider.GetRequiredService<TDbContext>().Database.EnsureCreatedAsync(cancellationToken);
-            var users = scope.ServiceProvider.GetRequiredService<IUserManager<TUser>>();
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<TUser>>();
             var roles = scope.ServiceProvider.GetRequiredService<IRoleManager<TRole>>();
 
             Assert.True((await roles.CreateAsync(role)).Succeeded);
