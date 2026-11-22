@@ -88,7 +88,7 @@ namespace RuntimeApps.Authentication.Test {
             Assert.Equal(64, request.FindProperty(nameof(VerificationRequest<int>.PublicHandleHash)).GetMaxLength());
             Assert.Equal(512, request.FindProperty(nameof(VerificationRequest<int>.NormalizedDestination)).GetMaxLength());
             Assert.Equal(32, request.FindProperty(nameof(VerificationRequest<int>.Status)).GetMaxLength());
-            Assert.Equal(typeof(string), request.FindProperty(nameof(VerificationRequest<int>.Status)).GetValueConverter().ProviderClrType);
+            Assert.Equal(typeof(string), request.FindProperty(nameof(VerificationRequest<int>.Status)).GetProviderClrType());
             Assert.True(request.FindProperty(nameof(VerificationRequest<int>.CustomPurpose)).IsNullable);
             Assert.True(send.FindProperty(nameof(VerificationSend.CustomPurpose)).IsNullable);
             Assert.Equal(128, send.FindProperty(nameof(VerificationSend.CustomChannel)).GetMaxLength());
