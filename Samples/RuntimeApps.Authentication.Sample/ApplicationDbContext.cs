@@ -1,7 +1,9 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
-using RuntimeApps.Authentication.EF.Configurations;
+using RuntimeApps.Authentication.EF.Features.RefreshTokens.Configurations;
+using RuntimeApps.Authentication.EF.Features.Verification.Configurations;
+using RuntimeApps.Authentication.EF.DependencyInjection;
 namespace RuntimeApps.Authentication.Sample {
     public class ApplicationDbContext: IdentityDbContext<IdentityUser<int>, IdentityRole<int>, int> {
 
@@ -9,7 +11,7 @@ namespace RuntimeApps.Authentication.Sample {
 
         protected override void OnModelCreating(ModelBuilder modelBuilder) {
             base.OnModelCreating(modelBuilder);
-            modelBuilder.AddRuntimeAppsAuthenticationEntities<int>(options => options.UseVerificationRequests());
+            modelBuilder.AddVerificationRequestEntity<int>();
         }
     }
 }

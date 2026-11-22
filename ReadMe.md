@@ -241,18 +241,17 @@ Applications that do not use the EF integration can implement `IRefreshTokenStor
 
 ### Model configuration
 
-Add the entities for the features you use with one call:
+Add the entities of the features you use in `OnModelCreating`. Each method is independent; call only the ones you need:
 
 ```cs
 protected override void OnModelCreating(ModelBuilder modelBuilder) {
     base.OnModelCreating(modelBuilder);
-    modelBuilder.AddRuntimeAppsAuthenticationEntities<int>(features => features
-        .UseRefreshTokens()
-        .UseVerificationRequests());
+    modelBuilder.AddRefreshTokenEntity<int>();
+    modelBuilder.AddVerificationRequestEntity<int>();
 }
 ```
 
-At least one feature must be selected, and only selected features add tables. The granular methods `AddRefreshTokenEntity<TKey>()` and `AddVerificationRequestEntity<TKey>()` are still available and produce the same model. Table names or schemas can be changed with ordinary EF Core calls after the extension, for example `modelBuilder.Entity<RefreshToken<int>>().ToTable("RefreshTokens", "auth")`.
+Table names or schemas can be changed with ordinary EF Core calls afterwards, for example `modelBuilder.Entity<RefreshToken<int>>().ToTable("RefreshTokens", "auth")`.
 
 ### Supported providers and limitations
 

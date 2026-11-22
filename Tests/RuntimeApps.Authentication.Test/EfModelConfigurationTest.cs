@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using RuntimeApps.Authentication.EF.Configurations;
 using RuntimeApps.Authentication.EF.Features.RefreshTokens.Configurations;
 using RuntimeApps.Authentication.EF.Features.Verification.Configurations;
 using RuntimeApps.Authentication.Features.RefreshTokens.Models;
@@ -9,46 +8,6 @@ using RuntimeApps.Authentication.Features.Verification.Models;
 using Microsoft.AspNetCore.Identity;
 namespace RuntimeApps.Authentication.Test {
     public class EfModelConfigurationTest {
-        [Fact]
-        public void ConsolidatedExtension_AddsSelectedFeaturesOnly() {
-            using var refreshOnly = new RefreshOnlyDbContext();
-            Assert.NotNull(refreshOnly.Model.FindEntityType(typeof(RefreshToken<int>)));
-            Assert.Null(refreshOnly.Model.FindEntityType(typeof(VerificationRequest<int>)));
-            Assert.Null(refreshOnly.Model.FindEntityType(typeof(VerificationSend)));
-
-            using var all = new ConsolidatedDbContext();
-            Assert.NotNull(all.Model.FindEntityType(typeof(RefreshToken<int>)));
-            Assert.NotNull(all.Model.FindEntityType(typeof(VerificationRequest<int>)));
-            Assert.NotNull(all.Model.FindEntityType(typeof(VerificationSend)));
-        }
-
-        [Fact]
-        public void ConsolidatedExtension_ProducesSameModelAsGranularMethods() {
-            using var consolidated = new ConsolidatedDbContext();
-            using var granular = new GranularDbContext();
-
-            foreach(var type in new[] { typeof(RefreshToken<int>), typeof(VerificationRequest<int>), typeof(VerificationSend) }) {
-                var left = consolidated.Model.FindEntityType(type);
-                var right = granular.Model.FindEntityType(type);
-                Assert.Equal(right.GetTableName(), left.GetTableName());
-                Assert.Equal(
-                    right.GetProperties().Select(p => p.Name).OrderBy(n => n),
-                    left.GetProperties().Select(p => p.Name).OrderBy(n => n));
-                Assert.Equal(
-                    right.GetIndexes().Select(i => string.Join(",", i.Properties.Select(p => p.Name)) + i.IsUnique).OrderBy(n => n),
-                    left.GetIndexes().Select(i => string.Join(",", i.Properties.Select(p => p.Name)) + i.IsUnique).OrderBy(n => n));
-            }
-        }
-
-        [Fact]
-        public void ConsolidatedExtension_WithoutSelectedFeatures_Throws() {
-            var exception = Assert.Throws<InvalidOperationException>(() => {
-                using var context = new EmptySelectionDbContext();
-                _ = context.Model;
-            });
-            Assert.Contains("Select at least one feature", exception.ToString());
-        }
-
         [Fact]
         public void RefreshTokenModel_DefinesExpectedConstraintsAndMappings() {
             using var context = new GranularDbContext();
@@ -98,6 +57,14 @@ namespace RuntimeApps.Authentication.Test {
         }
 
         [Fact]
+        public void GranularMethods_CanBeUsedIndependently() {
+            using var context = new RefreshOnlyDbContext();
+            Assert.NotNull(context.Model.FindEntityType(typeof(RefreshToken<int>)));
+            Assert.Null(context.Model.FindEntityType(typeof(VerificationRequest<int>)));
+            Assert.Null(context.Model.FindEntityType(typeof(VerificationSend)));
+        }
+
+        [Fact]
         public void GranularMethods_StillWorkTogetherWithIdentityModel() {
             using var context = new GranularDbContext();
             Assert.NotNull(context.Model.FindEntityType(typeof(IdentityUser<int>)));
@@ -110,14 +77,7 @@ namespace RuntimeApps.Authentication.Test {
         private sealed class RefreshOnlyDbContext(): IdentityDbContext<IdentityUser<int>, IdentityRole<int>, int>(Options<RefreshOnlyDbContext>()) {
             protected override void OnModelCreating(ModelBuilder modelBuilder) {
                 base.OnModelCreating(modelBuilder);
-                modelBuilder.AddRuntimeAppsAuthenticationEntities<int>(options => options.UseRefreshTokens());
-            }
-        }
-
-        private sealed class ConsolidatedDbContext(): IdentityDbContext<IdentityUser<int>, IdentityRole<int>, int>(Options<ConsolidatedDbContext>()) {
-            protected override void OnModelCreating(ModelBuilder modelBuilder) {
-                base.OnModelCreating(modelBuilder);
-                modelBuilder.AddRuntimeAppsAuthenticationEntities<int>(options => options.UseRefreshTokens().UseVerificationRequests());
+                modelBuilder.AddRefreshTokenEntity<int>();
             }
         }
 
@@ -129,15 +89,10 @@ namespace RuntimeApps.Authentication.Test {
             }
         }
 
-        private sealed class EmptySelectionDbContext(): DbContext(Options<EmptySelectionDbContext>()) {
-            protected override void OnModelCreating(ModelBuilder modelBuilder) =>
-                modelBuilder.AddRuntimeAppsAuthenticationEntities<int>(_ => { });
-        }
-
         private sealed class StringKeyDbContext(): IdentityDbContext<IdentityUser, IdentityRole, string>(Options<StringKeyDbContext>()) {
             protected override void OnModelCreating(ModelBuilder modelBuilder) {
                 base.OnModelCreating(modelBuilder);
-                modelBuilder.AddRuntimeAppsAuthenticationEntities<string>(options => options.UseRefreshTokens());
+                modelBuilder.AddRefreshTokenEntity<string>();
             }
         }
     }

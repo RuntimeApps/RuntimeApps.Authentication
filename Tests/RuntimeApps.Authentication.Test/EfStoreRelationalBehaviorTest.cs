@@ -2,7 +2,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using RuntimeApps.Authentication.EF.Configurations;
+using RuntimeApps.Authentication.EF.Features.RefreshTokens.Configurations;
+using RuntimeApps.Authentication.EF.Features.Verification.Configurations;
 using RuntimeApps.Authentication.EF.Features.RefreshTokens.Stores;
 using RuntimeApps.Authentication.EF.Features.Verification.Stores;
 using RuntimeApps.Authentication.Features.RefreshTokens.Models;
@@ -214,7 +215,8 @@ namespace RuntimeApps.Authentication.Test {
             : IdentityDbContext<IdentityUser<int>, IdentityRole<int>, int>(options) {
             protected override void OnModelCreating(ModelBuilder modelBuilder) {
                 base.OnModelCreating(modelBuilder);
-                modelBuilder.AddRuntimeAppsAuthenticationEntities<int>(features => features.UseRefreshTokens().UseVerificationRequests());
+                modelBuilder.AddRefreshTokenEntity<int>();
+                modelBuilder.AddVerificationRequestEntity<int>();
             }
         }
     }
