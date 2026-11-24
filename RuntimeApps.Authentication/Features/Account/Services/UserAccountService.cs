@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 using RuntimeApps.Authentication.Features.Account.Contracts;
 using RuntimeApps.Authentication.Features.ExternalLogin.Contracts;
+using RuntimeApps.Authentication.Features.ExternalLogin.Services;
 using RuntimeApps.Authentication.Features.Verification.Contracts;
 using RuntimeApps.Authentication.Features.RefreshTokens.Contracts;
 using RuntimeApps.Authentication.Features.RefreshTokens.Models;
@@ -15,12 +16,9 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
         where TUser : IdentityUser<TKey>
         where TKey : IEquatable<TKey> {
         private readonly IUserManager<TUser> _userManager;
-        private readonly IUserLoginManager<TUser> _loginManager;
-        private readonly IUserEmailManager<TUser> _emailManager;
         private readonly ISignInManager<TUser> _signInManager;
         private readonly Microsoft.AspNetCore.Http.IHttpContextAccessor _contextAccessor;
-        private readonly IEnumerable<IExternalLoginProvider<TUser>> _externalLoginProviders;
-        private readonly IExternalLoginEmailTrustPolicy<TUser> _externalLoginEmailTrustPolicy;
+        private readonly IExternalLoginService<TUser> _externalLoginService;
         private readonly VerificationOptions _verificationOptions;
         private readonly IVerificationWorkflowService<TUser, TKey> _verificationWorkflow;
         private readonly IAuthenticationSessionIssuer<TUser> _sessionIssuer;
@@ -36,9 +34,39 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
                                   IJwtProvider<TUser> jwtUtils = null)
             : this(userManager, signInManager, externalLoginProviders, authenticationHandlerProvider,
                    contextAccessor, userClaimsPrincipalFactory, authenticationSchemeProvider,
-                   jwtUtils, null, null, null, null, null, null, null) {
+                   jwtUtils, null, null, null, null, null, null, null, null) {
         }
 
+        // Preserve the previous public constructor signature for existing compiled consumers. It has no
+        // optional parameters so that calls with fewer arguments bind to the constructor below, which
+        // is also the one dependency injection selects.
+        public UserAccountService(IUserManager<TUser> userManager,
+                                  ISignInManager<TUser> signInManager,
+                                  IEnumerable<IExternalLoginProvider<TUser>> externalLoginProviders,
+                                  IAuthenticationHandlerProvider authenticationHandlerProvider,
+                                  IHttpContextAccessor contextAccessor,
+                                  IUserClaimsPrincipalFactory<TUser> userClaimsPrincipalFactory,
+                                  IAuthenticationSchemeProvider authenticationSchemeProvider,
+                                  IJwtProvider<TUser> jwtUtils,
+                                  IRefreshTokenService<TKey> refreshTokenService,
+                                  IOptions<RefreshTokenOptions> refreshTokenOptions,
+                                  IExternalLoginEmailTrustPolicy<TUser> externalLoginEmailTrustPolicy,
+                                  IOptions<VerificationOptions> verificationOptions,
+                                  IVerificationWorkflowService<TUser, TKey> verificationWorkflow,
+                                  IUserLoginManager<TUser> loginManager,
+                                  IUserEmailManager<TUser> emailManager,
+                                  IAuthenticationSessionIssuer<TUser> sessionIssuer)
+            : this(userManager, signInManager, externalLoginProviders, authenticationHandlerProvider,
+                   contextAccessor, userClaimsPrincipalFactory, authenticationSchemeProvider,
+                   jwtUtils, refreshTokenService, refreshTokenOptions, externalLoginEmailTrustPolicy,
+                   verificationOptions, verificationWorkflow, loginManager, emailManager, sessionIssuer,
+                   (IExternalLoginService<TUser>)null) {
+        }
+
+        /// <param name="externalLoginService">
+        /// Resolves accounts for external logins. When omitted, a default service is composed from the
+        /// other dependencies, so existing constructors and registrations keep working.
+        /// </param>
         public UserAccountService(IUserManager<TUser> userManager,
                                   ISignInManager<TUser> signInManager,
                                   IEnumerable<IExternalLoginProvider<TUser>> externalLoginProviders,
@@ -54,92 +82,31 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
                                   IVerificationWorkflowService<TUser, TKey> verificationWorkflow = null,
                                   IUserLoginManager<TUser> loginManager = null,
                                   IUserEmailManager<TUser> emailManager = null,
-                                  IAuthenticationSessionIssuer<TUser> sessionIssuer = null) {
+                                  IAuthenticationSessionIssuer<TUser> sessionIssuer = null,
+                                  IExternalLoginService<TUser> externalLoginService = null) {
             _userManager = userManager;
-            _loginManager = loginManager ?? userManager as IUserLoginManager<TUser>;
-            _emailManager = emailManager ?? userManager as IUserEmailManager<TUser>;
             _signInManager = signInManager;
-            _externalLoginProviders = externalLoginProviders;
             _contextAccessor = contextAccessor;
-            _externalLoginEmailTrustPolicy = externalLoginEmailTrustPolicy;
             _verificationOptions = verificationOptions?.Value ?? new VerificationOptions();
             _verificationWorkflow = verificationWorkflow;
             _sessionIssuer = sessionIssuer;
+            _externalLoginService = externalLoginService ?? new ExternalLoginService<TUser, TKey>(
+                externalLoginProviders,
+                userManager,
+                loginManager ?? userManager as IUserLoginManager<TUser>,
+                emailManager ?? userManager as IUserEmailManager<TUser>,
+                userManager as IUserPasswordManager<TUser>,
+                externalLoginEmailTrustPolicy,
+                verificationOptions,
+                refreshTokenService);
         }
 
         public virtual async Task<Result<TUser, Token>> ExternalLoginAsync(string providerName, string token, CancellationToken cancellationToken = default) {
             cancellationToken.ThrowIfCancellationRequested();
-            var provider = _externalLoginProviders.FirstOrDefault(p => string.Equals(p.Provider, providerName, StringComparison.OrdinalIgnoreCase));
-            if(provider == null)
+            var resolved = await _externalLoginService.ResolveLoginAsync(providerName, token, cancellationToken);
+            if(!resolved.Succeeded || resolved.Data == null)
                 return ExternalAuthenticationFailed();
-
-            var providerResult = await provider.ValidateAsync(token, cancellationToken);
-            if(providerResult?.LoginInfo == null || providerResult.User == null)
-                return ExternalAuthenticationFailed();
-
-            cancellationToken.ThrowIfCancellationRequested();
-            var loginInfo = providerResult.LoginInfo;
-            // Identity manager/store APIs used below have no CancellationToken overloads.
-            var user = await _loginManager.FindByLoginAsync(loginInfo.LoginProvider, loginInfo.ProviderKey);
-            cancellationToken.ThrowIfCancellationRequested();
-            if(user == null) {
-                var trustedEmail = _externalLoginEmailTrustPolicy?.IsEmailTrusted(provider.Provider, providerResult) == true;
-                // Do not look up an untrusted email and branch on whether it belongs to an
-                // account. Reject the same untrusted identity before either account path.
-                if((!string.IsNullOrWhiteSpace(providerResult.Email) && !trustedEmail) ||
-                   (_verificationOptions.RequireEmailVerificationForExternalLogins && !trustedEmail))
-                    return ExternalAuthenticationFailed();
-
-                var existingEmailUser = string.IsNullOrWhiteSpace(providerResult.Email)
-                    ? null
-                    : await _emailManager.FindByEmailAsync(providerResult.Email);
-                cancellationToken.ThrowIfCancellationRequested();
-
-                if(existingEmailUser != null) {
-                    user = existingEmailUser;
-                    var wasEmailConfirmed = user.EmailConfirmed;
-                    // Link first. If the subsequent confirmation update fails, undo the link.
-                    var addLoginResult = await _loginManager.AddLoginAsync(user, loginInfo);
-                    if(!addLoginResult.Succeeded)
-                        return ExternalAuthenticationFailed();
-
-                    if(!wasEmailConfirmed) {
-                        user.EmailConfirmed = true;
-                        var updateResult = await _userManager.UpdateAsync(user);
-                        if(!updateResult.Succeeded) {
-                            user.EmailConfirmed = wasEmailConfirmed;
-                            // The link is a complete, trusted Identity association. Keep it
-                            // retryable if confirmation persistence fails instead of racing a
-                            // concurrent login by compensating with RemoveLoginAsync.
-                            return ExternalAuthenticationFailed();
-                        }
-                    }
-                } else {
-                    user = providerResult.User;
-                    if(string.IsNullOrWhiteSpace(user.Email))
-                        user.Email = providerResult.Email;
-                    if(string.IsNullOrWhiteSpace(user.UserName))
-                        user.UserName = !string.IsNullOrWhiteSpace(providerResult.Email)
-                            ? providerResult.Email
-                            : $"{provider.Provider}_{loginInfo.ProviderKey}";
-                    user.EmailConfirmed = trustedEmail;
-
-                    var createResult = await _userManager.CreateAsync(user);
-                    if(!createResult.Succeeded)
-                        return ExternalAuthenticationFailed();
-
-                    var addLoginResult = await _loginManager.AddLoginAsync(user, loginInfo);
-                    if(!addLoginResult.Succeeded)
-                        // Identity exposes no transaction spanning user creation and external
-                        // login linking. Leave the valid account in place: the same trusted
-                        // provider retry can find it and attach the login. Deleting it here
-                        // could race another operation that has already started using it.
-                        return ExternalAuthenticationFailed();
-                }
-            }
-
-            if(user == null)
-                return ExternalAuthenticationFailed();
+            var user = resolved.Data;
 
             // The non-cancellable Identity writes above are now consistent. Honor cancellation
             // before sending verification or issuing an authentication session.
