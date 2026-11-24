@@ -70,8 +70,10 @@ namespace RuntimeApps.Authentication.Features.ExternalLogin.Providers {
                     LoginInfo = new UserLoginInfo(Provider,
                         userInfo.Id.Value.ToString(CultureInfo.InvariantCulture), Provider),
                     Email = userInfo.Email,
-                    // Facebook's current response model does not provide a trustworthy email-verified assertion.
-                    EmailVerified = false
+                    // Facebook's current response model does not provide an email-verified assertion.
+                    // Whether the email is trusted is decided by EmailTrust.
+                    EmailVerified = false,
+                    EmailTrustMode = option.EmailTrust
                 };
             } catch(OperationCanceledException) {
                 throw;

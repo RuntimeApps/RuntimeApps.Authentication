@@ -5,6 +5,12 @@ using Microsoft.AspNetCore.Identity;
 namespace RuntimeApps.Authentication.Features.ExternalLogin.Models {
     public class MicrosoftExternalLoginOption<TUser>: BaseExternalLoginOption
         where TUser : class, new() {
+        public MicrosoftExternalLoginOption() {
+            // Microsoft email claims are mutable and are not proof of mailbox ownership, especially with
+            // the multi-tenant "common" endpoint. Applications opt in explicitly (see the README).
+            EmailTrust = ExternalLoginEmailTrustMode.Never;
+        }
+
         public string IssuerEndpoint { get; set; } = "https://login.microsoftonline.com/common/v2.0/";
         public string ConfigurationAddress { get; set; } = "/.well-known/openid-configuration";
         public Func<JwtSecurityToken, TUser> Mapper { get; set; } = (data) => new TUser();

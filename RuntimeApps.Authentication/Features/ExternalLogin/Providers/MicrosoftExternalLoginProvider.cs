@@ -82,7 +82,8 @@ namespace RuntimeApps.Authentication.Features.ExternalLogin.Providers {
                     LoginInfo = new UserLoginInfo(Provider, $"{tenantIdClaim}:{objectId}", Provider),
                     Email = jwtToken.Claims.FirstOrDefault(claim => claim.Type == "email")?.Value,
                     // Microsoft email claims are mutable and do not prove mailbox ownership.
-                    EmailVerified = false
+                    EmailVerified = false,
+                    EmailTrustMode = option.EmailTrust
                 };
             } catch(OperationCanceledException) {
                 throw;

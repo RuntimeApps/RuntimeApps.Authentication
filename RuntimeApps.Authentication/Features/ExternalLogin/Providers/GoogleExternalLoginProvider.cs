@@ -54,7 +54,8 @@ namespace RuntimeApps.Authentication.Features.ExternalLogin.Providers {
                     LoginInfo = new UserLoginInfo(Provider, payload.Subject, Provider),
                     Email = payload.Email,
                     EmailVerified = payload.EmailVerified,
-                    HostedDomain = payload.HostedDomain
+                    HostedDomain = payload.HostedDomain,
+                    EmailTrustMode = option.EmailTrust
                 };
             } catch(OperationCanceledException) {
                 throw;

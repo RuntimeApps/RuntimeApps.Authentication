@@ -66,6 +66,7 @@ namespace RuntimeApps.Authentication.Test {
             Assert.Equal("person@gmail.com", result.Email);
             Assert.True(result.EmailVerified);
             Assert.Equal("google-client", provider.RequestedAudience);
+            Assert.Equal(ExternalLoginEmailTrustMode.Verified, result.EmailTrustMode);
         }
 
         [Theory]
@@ -249,6 +250,7 @@ namespace RuntimeApps.Authentication.Test {
             Assert.Equal($"{MicrosoftTenant}:{MicrosoftObjectId}", result.LoginInfo.ProviderKey);
             Assert.Equal("person@contoso.com", result.Email);
             Assert.False(result.EmailVerified);
+            Assert.Equal(ExternalLoginEmailTrustMode.Never, result.EmailTrustMode);
         }
 
         [Fact]
@@ -365,6 +367,32 @@ namespace RuntimeApps.Authentication.Test {
             Assert.Equal("123", result.LoginInfo.ProviderKey);
             Assert.Equal("person@example.com", result.Email);
             Assert.False(result.EmailVerified);
+            Assert.Equal(ExternalLoginEmailTrustMode.Always, result.EmailTrustMode);
+        }
+
+        [Fact]
+        public async Task Facebook_ConfiguredNever_CarriesConfiguredTrustMode() {
+            var future = DateTimeOffset.UtcNow.AddHours(1).ToUnixTimeSeconds();
+            var provider = new FacebookExternalLoginProvider<IdentityUser>(
+                Microsoft.Extensions.Options.Options.Create(new FacebookExternalLoginOption<IdentityUser> {
+                    ClientId = "42",
+                    ClientSecret = "secret",
+                    EmailTrust = ExternalLoginEmailTrustMode.Never,
+                    Mapper = data => new IdentityUser { Email = data.Email }
+                }),
+                FactoryFor(FacebookGraph(DebugBody(expiresAt: future), MeBody())),
+                NullLogger<FacebookExternalLoginProvider<IdentityUser>>.Instance);
+
+            var result = await provider.ValidateAsync("user-access-token");
+
+            Assert.Equal(ExternalLoginEmailTrustMode.Never, result.EmailTrustMode);
+        }
+
+        [Fact]
+        public void ProviderOptions_DefaultEmailTrust() {
+            Assert.Equal(ExternalLoginEmailTrustMode.Verified, new GoogleExternalLoginOption<IdentityUser>().EmailTrust);
+            Assert.Equal(ExternalLoginEmailTrustMode.Always, new FacebookExternalLoginOption<IdentityUser>().EmailTrust);
+            Assert.Equal(ExternalLoginEmailTrustMode.Never, new MicrosoftExternalLoginOption<IdentityUser>().EmailTrust);
         }
 
         [Fact]
