@@ -5,6 +5,12 @@ using RuntimeApps.Authentication.Features.ExternalLogin.Models.Facebook;
 namespace RuntimeApps.Authentication.Features.ExternalLogin.Models {
     public class FacebookExternalLoginOption<TUser> : BaseExternalLoginOption
         where TUser : class, new() {
+        public FacebookExternalLoginOption() {
+            // Trusted by default so users are not blocked. Applications that do not want to rely on
+            // Facebook's email claim should set EmailTrust to Never.
+            EmailTrust = ExternalLoginEmailTrustMode.Always;
+        }
+
         public string AccessTokenUrl { get; set; } = "https://graph.facebook.com/oauth/access_token?client_id={0}&client_secret={1}&grant_type=client_credentials";
         public string DebugTokenUrl { get; set; } = "https://graph.facebook.com/debug_token?input_token={0}&access_token={1}";
         public string GraphApiVersion { get; set; } = "v27.0";

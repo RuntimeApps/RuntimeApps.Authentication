@@ -260,6 +260,59 @@ namespace RuntimeApps.Authentication.Endpoints.Account {
               .Produces(StatusCodes.Status401Unauthorized)
               .Produces(StatusCodes.Status403Forbidden);
 
+            // Linking is only offered when at least one external login provider is registered.
+            if(endpoints.ServiceProvider.GetService<IServiceProviderIsService>()
+                ?.IsService(typeof(IExternalLoginService<TUser>)) == true) {
+                authorizedRouteGroup.MapGet("logins", async Task<IResult> (IUserManager<TUser> userManager, IExternalLoginService<TUser> externalLoginService, HttpContext httpContext, CancellationToken cancellationToken) => {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var user = await userManager.GetUserAsync(httpContext.User);
+                    if(user == null)
+                        return TypedResults.Unauthorized();
+
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return TypedResults.Ok(await externalLoginService.ListLoginsAsync(user, cancellationToken));
+                }).WithName("AccountManagement_ListExternalLogins").WithTags("Account management").WithSummary("List the external logins linked to the current account")
+                  .Produces<IReadOnlyList<ExternalLoginSummary>>(StatusCodes.Status200OK)
+                  .Produces(StatusCodes.Status401Unauthorized)
+                  .Produces(StatusCodes.Status403Forbidden);
+
+                authorizedRouteGroup.MapPost("logins/link", async Task<IResult> ([FromBody] LinkExternalLoginModel request, IUserManager<TUser> userManager, IExternalLoginService<TUser> externalLoginService, HttpContext httpContext, CancellationToken cancellationToken) => {
+                    if(string.IsNullOrWhiteSpace(request?.Provider) || string.IsNullOrWhiteSpace(request.Token))
+                        return ValidationProblemFactory.CreateValidationProblem("InvalidExternalLogin", "Provider and token are required.");
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var user = await userManager.GetUserAsync(httpContext.User);
+                    if(user == null)
+                        return TypedResults.Unauthorized();
+
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var result = await externalLoginService.LinkAsync(user, request, cancellationToken);
+                    return result.Succeeded ? TypedResults.Ok() : result.CreatePublicError();
+                }).WithName("AccountManagement_LinkExternalLogin").WithTags("Account management").WithSummary("Link an external login to the current account after re-authentication")
+                  .Produces(StatusCodes.Status200OK)
+                  .ProducesValidationProblem(StatusCodes.Status400BadRequest)
+                  .Produces(StatusCodes.Status401Unauthorized)
+                  .Produces(StatusCodes.Status403Forbidden)
+                  .Produces(StatusCodes.Status409Conflict);
+
+                authorizedRouteGroup.MapPost("logins/unlink", async Task<IResult> ([FromBody] UnlinkExternalLoginModel request, IUserManager<TUser> userManager, IExternalLoginService<TUser> externalLoginService, HttpContext httpContext, CancellationToken cancellationToken) => {
+                    if(string.IsNullOrWhiteSpace(request?.Provider))
+                        return ValidationProblemFactory.CreateValidationProblem("InvalidExternalLogin", "Provider is required.");
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var user = await userManager.GetUserAsync(httpContext.User);
+                    if(user == null)
+                        return TypedResults.Unauthorized();
+
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var result = await externalLoginService.UnlinkAsync(user, request.Provider, cancellationToken);
+                    return result.Succeeded ? TypedResults.Ok() : result.CreatePublicError();
+                }).WithName("AccountManagement_UnlinkExternalLogin").WithTags("Account management").WithSummary("Unlink an external login unless it is the last authentication method")
+                  .Produces(StatusCodes.Status200OK)
+                  .ProducesValidationProblem(StatusCodes.Status400BadRequest)
+                  .Produces(StatusCodes.Status401Unauthorized)
+                  .Produces(StatusCodes.Status403Forbidden)
+                  .Produces(StatusCodes.Status409Conflict);
+            }
+
             return endpoints;
         }
 

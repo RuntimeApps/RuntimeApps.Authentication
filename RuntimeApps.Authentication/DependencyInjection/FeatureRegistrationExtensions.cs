@@ -143,6 +143,7 @@ namespace RuntimeApps.Authentication.DependencyInjection {
             o.Validate(x => !string.IsNullOrWhiteSpace(x.ClientId) && !string.IsNullOrWhiteSpace(x.ClientSecret), "External login requires ClientId and ClientSecret.").ValidateOnStart();
             b.Services.TryAddEnumerable(ServiceDescriptor.Transient<IExternalLoginProvider<TUser>, TProvider>());
             b.Services.TryAddScoped<IExternalLoginEmailTrustPolicy<TUser>, DefaultExternalLoginEmailTrustPolicy<TUser>>();
+            b.Services.TryAddScoped<IExternalLoginService<TUser>, ExternalLoginService<TUser, TKey>>();
             return b;
         }
         private static class TOptionSection<T> { public static string Name => typeof(T).Name.StartsWith("Google", StringComparison.Ordinal) ? "Authentication:ExternalLogin:Google" : typeof(T).Name.StartsWith("Facebook", StringComparison.Ordinal) ? "Authentication:ExternalLogin:Facebook" : "Authentication:ExternalLogin:Microsoft"; }

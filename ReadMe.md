@@ -32,7 +32,7 @@ Protect personal data | Protect personal user data in database by encrypt user d
 
 Role assignment routes accept a named request object such as `{ "roles": ["Admin"] }` rather than a bare string array. Bulk user-claim routes accept `{ "claims": [{ "type": "department", "value": "finance" }] }`. Role create and update routes accept `{ "role": { ... } }`; the nested role payload uses the consumer's configured role type so custom role fields remain available. These request shapes are versioned API changes for clients of those routes. Single-claim requests continue to use the named `ClaimDto` body, and the authentication, registration, verification, and password routes use named request DTOs.
 
-An external identity with an untrusted email claim is rejected with the same generic authentication failure whether that email matches an existing account or not. An existing account is linked only when the configured email trust policy approves the provider claim. Identity operations do not expose cancellation overloads; endpoint handlers check request cancellation before starting them and finish in-flight writes. Identity provides no transaction spanning user creation and external-login linking, so if linking fails after creation the valid account remains; retrying with the same trusted provider can link it. The service does not delete or unlink records that a concurrent operation may already be using.
+An external login whose email claim is not trusted is never matched to an existing account by email: the claim is ignored, and a new account is created without that email. Identity operations do not expose cancellation overloads; endpoint handlers check request cancellation before starting them and finish in-flight writes. See [External login policy](#external-login-policy) for account resolution, linking, unlinking, and the limits of the non-transactional design.
 
 `IUserManager<TUser>` provides user lookup, create, update, delete, and principal lookup operations. For services that need specific capabilities, inject focused contracts such as `IUserPasswordManager<TUser>`, `IUserEmailManager<TUser>`, `IUserRoleManager<TUser>`, or `IUserClaimManager<TUser>`. `AddRuntimeAppsAuthentication<TUser, TRole, TKey>()` registers these contracts to the same scoped `RuntimeAppsUserManager<TUser>` instance. The concrete manager remains customizable: derive from `RuntimeAppsUserManager<TUser>` and register it with `.AddUserManager<YourUserManager>()` after calling `AddRuntimeAppsAuthentication`. A manager registered directly as `UserManager<TUser>` before the builder must also derive from `RuntimeAppsUserManager<TUser>` to share the focused interfaces.
 
@@ -152,6 +152,8 @@ In the backend, we provide some external login validators. each validator has a 
         option.ClientId = builder.Configuration["Authentication:Facebook:AppId"];
         option.ClientSecret = builder.Configuration["Authentication:Facebook:AppSecret"];
         option.Mapper = (data) => FacebookExternalLoginOption<IdentityUser<int>>.UserIdentityMapper<IdentityUser<int>, int>(data);
+        // Facebook emails are trusted by default; set Never to stop relying on them.
+        // option.EmailTrust = ExternalLoginEmailTrustMode.Never;
     })
 ```
 
@@ -162,6 +164,8 @@ In the backend, we provide some external login validators. each validator has a 
         option.ClientId = builder.Configuration["Authentication:Microsoft:ClientId"];
         option.ClientSecret = builder.Configuration["Authentication:Microsoft:ClientSecret"];
         option.Mapper = (data) => MicrosoftExternalLoginOption<IdentityUser<int>>.UserIdentityMapper<IdentityUser<int>, int>(data);
+        // Microsoft emails are not trusted by default. Read "Email trust" before enabling Always.
+        // option.EmailTrust = ExternalLoginEmailTrustMode.Always;
     })
 ```
 
@@ -338,9 +342,65 @@ Map `MapAdminUserApi<TUser, TUserDto, TKey>()` separately from public registrati
 
 External provider login does not require a second email challenge by default. Set `RequireEmailVerificationForExternalLogins = true` to require email verification before issuing an application token when the provider email is not trusted.
 
-External authentication and email confirmation remain separate. The default trust policy accepts verified Google Gmail/Googlemail addresses and verified Google Workspace addresses when the signed hosted-domain claim matches the email domain. Facebook and Microsoft email claims are not trusted by default. Developers can replace `IExternalLoginEmailTrustPolicy<TUser>`.
+#### Email trust
 
-When the configured trust policy approves a provider's email claim, external login may automatically link that identity to a local account with the same email. Matching email alone is never sufficient: untrusted or unverified claims are rejected before the account lookup. Applications that do not want trusted-email auto-linking should use a trust policy that approves no claims and provide linking through an authenticated account-management flow.
+Whether a provider's email claim is trusted decides two things: whether an existing local account with that email may be linked to the external identity, and whether a newly created account starts with a confirmed email. Each provider has an `EmailTrust` option:
+
+| Mode | Meaning |
+| --- | --- |
+| `Verified` | Trust only emails the provider asserts as verified. For Google this also requires a Gmail/Googlemail address, or an address in the token's signed hosted-domain claim. |
+| `Always` | Trust any non-empty email claim from the provider. |
+| `Never` | Never trust the provider's email claim. |
+
+| Provider | Default | Notes |
+| --- | --- | --- |
+| Google | `Verified` | Verified Gmail addresses and verified Workspace addresses that match the hosted domain. |
+| Facebook | `Always` | Chosen so users are not blocked. Set `Never` if your application should not rely on Facebook's email claim. |
+| Microsoft | `Never` | Microsoft email claims are mutable and are not proof of mailbox ownership, especially with the multi-tenant `common` endpoint. Enable `Always` only if you restrict sign-in to tenants you control and accept this risk. |
+
+```cs
+.AddMicrosoftExternalLogin(builder.Configuration, option => option.EmailTrust = ExternalLoginEmailTrustMode.Never)
+```
+
+```json
+"Authentication": { "ExternalLogin": { "Facebook": { "EmailTrust": "Never" } } }
+```
+
+Custom `IExternalLoginProvider<TUser>` implementations keep the `Verified` behavior and are never trusted by the default policy; replace `IExternalLoginEmailTrustPolicy<TUser>` to decide for them.
+
+#### How an external login resolves to an account
+
+1. If the external identity (provider and subject) is already linked, that account signs in.
+2. Otherwise, if the email is trusted and an account with that email exists, the identity is linked to it. If that account's email was **never confirmed**, the account is first neutralized: its password is removed and its refresh tokens are revoked, then the login is linked and the email is marked confirmed. This prevents someone who registered an address they do not own from keeping access through the password they set.
+3. Otherwise a new account is created. An email that is not trusted is ignored: it is not used for lookup and is not stored, so the outcome does not reveal whether that email belongs to an account. The user name falls back to `PROVIDER_subject` (the trusted email is still used as the user name when there is one).
+
+Failures return the same generic response and never reveal whether an account exists. If creating the account succeeds but linking the login fails, the new account is removed again; the removal is guarded by Identity's concurrency stamp, so an account that something else has modified is left in place.
+
+#### Managing linked logins
+
+`MapAccountManagementApi` also maps these authenticated endpoints when an external provider is registered:
+
+| Route | Purpose |
+| --- | --- |
+| `GET logins` | Lists the providers linked to the current account (provider names only). |
+| `POST logins/link` | Links an identity: `{ "provider", "token", "currentPassword" }` or `{ "provider", "token", "reauthenticationProvider", "reauthenticationToken" }`. |
+| `POST logins/unlink` | Unlinks a provider: `{ "provider" }`. |
+
+Linking requires fresh proof of control of the account: the current password (failures count toward lockout), or a fresh token from a provider that is already linked to the same account. The provider's email does not need to match the account email and is never copied onto it. An account can hold one identity per provider, and an identity that belongs to another account cannot be linked (409). Unlinking is refused with 409 when it would remove the last usable way to sign in, and revokes the account's refresh tokens. A password and linked providers can be used together; `POST password` is unchanged. Status codes: 400 invalid request, 401 not authenticated, 403 re-authentication failed, 409 conflict.
+
+Custom `IUserPasswordManager<TUser>` implementations get a default `HasPasswordAsync` that returns `false`, so existing implementations still compile. Until you implement it, unlinking is refused and password re-authentication is rejected (fail closed).
+
+#### Limits
+
+ASP.NET Core Identity saves each manager call separately and this library adds no cross-store transaction. Multi-step operations are ordered so that a failure at any step leaves the account safe, and operations that can race are re-checked afterwards and undone. A process crash between two steps cannot be repaired automatically: for example, after the password of an unconfirmed account has been removed but before the login is linked, the account is left without a password and retrying the same trusted login completes the link. No schema change or migration is required.
+
+#### Upgrade notes
+
+- Facebook emails are now trusted by default (`Always`). To keep the previous behavior set `EmailTrust = ExternalLoginEmailTrustMode.Never`.
+- Microsoft emails stay untrusted by default; set `EmailTrust` explicitly to opt in.
+- An untrusted email no longer causes a login to be rejected: a new account is created without that email. Applications that need a verified email should keep `RequireEmailVerificationForExternalLogins = true`.
+- A trusted login that matches an existing unconfirmed account now removes that account's password.
+- `UserAccountService` keeps its existing constructors; `IExternalLoginService<TUser>` is optional and composed automatically when it is not registered.
 
 ### Migration note
 

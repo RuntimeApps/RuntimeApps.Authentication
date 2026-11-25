@@ -19,6 +19,19 @@ namespace RuntimeApps.Authentication.Features.ExternalLogin.Providers {
 
         public string Provider => "GOOGLE";
 
+        /// <summary>
+        /// Validates the Google ID token's signature, issuer, expiry and audience. The default
+        /// implementation delegates to <see cref="GoogleJsonWebSignature"/> with the configured client ID
+        /// as the only accepted audience. Overridable so the provider's own handling can be tested without
+        /// reaching Google's certificate endpoint.
+        /// </summary>
+        protected virtual Task<GoogleJsonWebSignature.Payload> ValidatePayloadAsync(
+            string token, string audience, CancellationToken cancellationToken) =>
+            GoogleJsonWebSignature.ValidateAsync(token,
+                new GoogleJsonWebSignature.ValidationSettings {
+                    Audience = new[] { audience }
+                });
+
         /// <remarks>The Google token validation library does not expose cancellation. Cancellation is checked before validation begins.</remarks>
         public async Task<ExternalLoginProviderResult<TUser>> ValidateAsync(string token, CancellationToken cancellationToken = default) {
             cancellationToken.ThrowIfCancellationRequested();
@@ -27,12 +40,9 @@ namespace RuntimeApps.Authentication.Features.ExternalLogin.Providers {
                 return null;
 
             try {
-                var payload = await GoogleJsonWebSignature.ValidateAsync(token,
-                    new GoogleJsonWebSignature.ValidationSettings {
-                        Audience = new[] { option.ClientId }
-                    });
+                var payload = await ValidatePayloadAsync(token, option.ClientId, cancellationToken);
 
-                if(string.IsNullOrWhiteSpace(payload.Subject))
+                if(payload == null || string.IsNullOrWhiteSpace(payload.Subject))
                     return null;
 
                 var user = option.Mapper(payload);
@@ -44,7 +54,8 @@ namespace RuntimeApps.Authentication.Features.ExternalLogin.Providers {
                     LoginInfo = new UserLoginInfo(Provider, payload.Subject, Provider),
                     Email = payload.Email,
                     EmailVerified = payload.EmailVerified,
-                    HostedDomain = payload.HostedDomain
+                    HostedDomain = payload.HostedDomain,
+                    EmailTrustMode = option.EmailTrust
                 };
             } catch(OperationCanceledException) {
                 throw;

@@ -36,14 +36,70 @@ namespace RuntimeApps.Authentication.Test {
         }
 
         [Fact]
-        public void FacebookEmail_IsNeverTrustedByDefault() {
+        public void VerifiedMode_DoesNotTrustNonGoogleProviders() {
             var result = new ExternalLoginProviderResult<object> {
                 User = new object(),
                 Email = "person@example.com",
-                EmailVerified = true
+                EmailVerified = true,
+                EmailTrustMode = ExternalLoginEmailTrustMode.Verified
             };
 
             Assert.False(_policy.IsEmailTrusted("FACEBOOK", result));
+        }
+
+        [Theory]
+        [InlineData("FACEBOOK", false)]
+        [InlineData("MICROSOFT", false)]
+        [InlineData("GOOGLE", false)]
+        [InlineData("MICROSOFT", true)]
+        public void AlwaysMode_TrustsAnyNonEmptyEmailRegardlessOfVerification(string provider, bool verified) {
+            var result = new ExternalLoginProviderResult<object> {
+                User = new object(),
+                Email = "person@example.com",
+                EmailVerified = verified,
+                EmailTrustMode = ExternalLoginEmailTrustMode.Always
+            };
+
+            Assert.True(_policy.IsEmailTrusted(provider, result));
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("   ")]
+        public void AlwaysMode_DoesNotTrustMissingEmail(string email) {
+            var result = new ExternalLoginProviderResult<object> {
+                User = new object(),
+                Email = email,
+                EmailTrustMode = ExternalLoginEmailTrustMode.Always
+            };
+
+            Assert.False(_policy.IsEmailTrusted("FACEBOOK", result));
+        }
+
+        [Fact]
+        public void NeverMode_DoesNotTrustEvenVerifiedGmail() {
+            var result = new ExternalLoginProviderResult<object> {
+                User = new object(),
+                Email = "person@gmail.com",
+                EmailVerified = true,
+                EmailTrustMode = ExternalLoginEmailTrustMode.Never
+            };
+
+            Assert.False(_policy.IsEmailTrusted("GOOGLE", result));
+        }
+
+        [Fact]
+        public void ResultWithoutExplicitMode_DefaultsToVerified() {
+            var result = new ExternalLoginProviderResult<object> { User = new object(), Email = "person@example.com" };
+
+            Assert.Equal(ExternalLoginEmailTrustMode.Verified, result.EmailTrustMode);
+            Assert.False(_policy.IsEmailTrusted("CUSTOM", result));
+        }
+
+        [Fact]
+        public void NullResult_IsNotTrusted() {
+            Assert.False(_policy.IsEmailTrusted("GOOGLE", null));
         }
 
         [Fact]

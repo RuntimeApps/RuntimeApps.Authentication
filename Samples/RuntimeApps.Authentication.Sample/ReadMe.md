@@ -101,6 +101,15 @@ app.MapGroup("api").MapVerificationApi<IdentityUser, IdentityUserDto, string>();
 app.MapGroup("api/account").MapAccountManagementApi<IdentityUser, IdentityUserDto, string>();
 ```
 
+When an external login provider is registered, `MapAccountManagementApi` also exposes `GET api/account/logins`,
+`POST api/account/logins/link` and `POST api/account/logins/unlink` for the signed-in user. Linking needs the
+current password or a fresh token from an already linked provider.
+
+## External login email trust
+
+`appsettings.json` shows the default `Authentication:ExternalLogin:<Provider>:EmailTrust` values (`Verified`, `Always`,
+`Never`). A trusted email can link an external identity to an existing account with the same email; Microsoft emails
+are not trusted by default. See the repository ReadMe, "External login policy", before changing them.
 
 ## Email verification
 
