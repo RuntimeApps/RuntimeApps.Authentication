@@ -9,7 +9,7 @@ namespace RuntimeApps.Authentication.Identity.Contracts {
         /// <c>RuntimeAppsUserManager</c>. The default returns false so a custom manager that does not
         /// implement it fails closed: external-login unlinking is refused and password re-authentication is rejected.
         /// </summary>
-        Task<bool> HasPasswordAsync(TUser user) => Task.FromResult(false);
+        Task<bool> HasPasswordAsync(TUser user);
         Task<IdentityResult> AddPasswordAsync(TUser user, string password);
         Task<IdentityResult> ChangePasswordAsync(TUser user, string currentPassword, string newPassword);
         Task<IdentityResult> RemovePasswordAsync(TUser user);

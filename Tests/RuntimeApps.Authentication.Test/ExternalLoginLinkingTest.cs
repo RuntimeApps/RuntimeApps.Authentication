@@ -441,6 +441,7 @@ namespace RuntimeApps.Authentication.Test {
             public Task<IdentityResult> RemovePasswordAsync(IdentityUser user) => Task.FromResult(IdentityResult.Success);
             public Task<string> GeneratePasswordResetTokenAsync(IdentityUser user) => Task.FromResult("token");
             public Task<IdentityResult> ResetPasswordAsync(IdentityUser user, string token, string newPassword) => Task.FromResult(IdentityResult.Success);
+            public Task<bool> HasPasswordAsync(IdentityUser user) => Task.FromResult(false);
         }
     }
 }
