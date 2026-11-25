@@ -30,6 +30,9 @@ namespace RuntimeApps.Authentication.EF.Features.RefreshTokens.Configurations {
             builder.HasIndex(token => new { token.UserId, token.RevokedAt });
             builder.HasIndex(token => new { token.FamilyId, token.RevokedAt });
             builder.HasIndex(token => token.ExpiresAt);
+            // Serves the revoked/rotated branch of cleanup; (UserId, RevokedAt) and (FamilyId, RevokedAt) do not
+            // support a range scan on RevokedAt alone.
+            builder.HasIndex(token => token.RevokedAt);
         }
     }
 }

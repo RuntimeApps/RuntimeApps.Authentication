@@ -26,6 +26,8 @@ namespace RuntimeApps.Authentication.Test {
             Assert.IsType<DateTimeOffsetToBinaryConverter>(entity.FindProperty(nameof(RefreshToken<int>.AbsoluteExpiresAt)).GetValueConverter());
             Assert.Contains(entity.GetIndexes(), i => i.Properties.Select(p => p.Name).SequenceEqual(new[] { "FamilyId", "RevokedAt" }));
             Assert.Contains(entity.GetIndexes(), i => i.Properties.Select(p => p.Name).SequenceEqual(new[] { "UserId", "RevokedAt" }));
+            Assert.Contains(entity.GetIndexes(), i => i.Properties.Select(p => p.Name).SequenceEqual(new[] { "RevokedAt" }));
+            Assert.Contains(entity.GetIndexes(), i => i.Properties.Select(p => p.Name).SequenceEqual(new[] { "ExpiresAt" }));
             Assert.Empty(entity.GetForeignKeys());
         }
 

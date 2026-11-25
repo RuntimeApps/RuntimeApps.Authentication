@@ -50,6 +50,10 @@ namespace RuntimeApps.Authentication.DependencyInjection {
                     "Refresh-token lifetime must be greater than zero.")
                 .Validate(options => options.AbsoluteSessionLifetime >= options.TokenLifetime,
                     "Absolute session lifetime must be greater than or equal to the refresh-token lifetime.")
+                .Validate(options => options.CleanupRetention >= options.TokenLifetime,
+                    "Cleanup retention must be greater than or equal to the refresh-token lifetime.")
+                .Validate(options => options.CleanupBatchSize is >= 1 and <= 10000,
+                    "Cleanup batch size must be between 1 and 10000.")
                 .Validate(options => options.RefreshRequestsPerMinute > 0,
                     "Refresh request rate limit must be greater than zero.")
                 .Validate(options => !string.IsNullOrWhiteSpace(options.CookieName) &&
@@ -71,6 +75,7 @@ namespace RuntimeApps.Authentication.DependencyInjection {
 
             builder.Services.TryAddSingleton(TimeProvider.System);
             builder.Services.TryAddScoped<IRefreshTokenService<TKey>, RefreshTokenService<TKey>>();
+            builder.Services.TryAddScoped<IRefreshTokenCleanupService<TKey>, RefreshTokenCleanupService<TKey>>();
             builder.Services.TryAddSingleton<IRefreshTokenRequestLimiter, RefreshTokenRequestLimiter>();
             builder.Services.TryAddEnumerable(
                 ServiceDescriptor.Singleton<IHostedService, RefreshTokenStoreStartupValidator<TKey>>());

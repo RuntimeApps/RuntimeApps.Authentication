@@ -13,6 +13,19 @@ namespace RuntimeApps.Authentication.Features.RefreshTokens.Models {
         /// </summary>
         public TimeSpan AbsoluteSessionLifetime { get; set; } = TimeSpan.FromDays(90);
 
+        /// <summary>
+        /// How long a revoked, rotated or expired record is kept before cleanup may delete it. Retained records
+        /// support security investigation and reuse detection. Must be at least <see cref="TokenLifetime"/> so
+        /// that a consumed token is still recognised as reused for as long as it could have been valid.
+        /// Defaults to 30 days.
+        /// </summary>
+        public TimeSpan CleanupRetention { get; set; } = TimeSpan.FromDays(30);
+
+        /// <summary>
+        /// Maximum number of records deleted by one cleanup call. Must be between 1 and 10000. Defaults to 1000.
+        /// </summary>
+        public int CleanupBatchSize { get; set; } = 1000;
+
         /// <summary>Revoke the affected session family when a previously rotated token is reused.</summary>
         public bool RevokeFamilyOnReuse { get; set; } = true;
 
