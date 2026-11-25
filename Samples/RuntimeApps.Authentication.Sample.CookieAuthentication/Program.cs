@@ -34,11 +34,16 @@ builder.Services.AddAuthentication(Microsoft.AspNetCore.Authentication.Cookies.C
     .AddEfRefreshTokenStore<ApplicationDbContext, IdentityUser<int>, IdentityRole<int>, int>()
     .AddRefreshToken(options => {
         options.TokenLifetime = TimeSpan.FromDays(30);
+        options.AbsoluteSessionLifetime = TimeSpan.FromDays(90);
+        options.CleanupRetention = TimeSpan.FromDays(30);
         options.RevokeFamilyOnReuse = true;
     })
     .AddCookieAuthenticationSessionIssuer()
     .AddDefaultUserMapper<IdentityUserDto<int>>()
     .AddValidators();
+
+// Scheduling cleanup is the application's job; this worker shows one way to do it.
+builder.Services.AddHostedService<RefreshTokenCleanupWorker>();
 
 builder.Services.AddControllers()
     .AddJsonOptions(option => {

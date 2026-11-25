@@ -8,9 +8,13 @@ The sample enables refresh tokens explicitly with `AddRefreshToken()` and regist
 .AddEfRefreshTokenStore<ApplicationDbContext, IdentityUser<int>, IdentityRole<int>, int>()
 .AddRefreshToken(options => {
     options.TokenLifetime = TimeSpan.FromDays(30);
+    options.AbsoluteSessionLifetime = TimeSpan.FromDays(90);
+    options.CleanupRetention = TimeSpan.FromDays(30);
     options.RevokeFamilyOnReuse = true;
 })
 ```
+
+A session ends at `AbsoluteSessionLifetime` after login no matter how often it is refreshed. `RefreshTokenCleanupWorker` shows how an application schedules `IRefreshTokenCleanupService<int>`; the library does not run cleanup on its own. The `AddRefreshTokenSessionHardening` migration adds the `AbsoluteExpiresAt` column and the `RevokedAt` index to a database that already has the refresh-token table.
 
 Map sessions explicitly with `app.MapGroup("api/session").MapSessionApi<IdentityUser<int>, int>()` after registering refresh-token support. Refresh and current-session logout use refresh-token credentials; logout-all requires an authenticated user. Cookie refresh credentials are stored in a Secure, HttpOnly cookie. For cross-origin clients, configure the exact allowed origins and review the application's CORS and CSRF policy.
 

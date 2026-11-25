@@ -194,6 +194,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddEfRefreshTokenStore<ApplicationDbContext, IdentityUser<int>, IdentityRole<int>, int>()
     .AddRefreshToken(options => {
         options.TokenLifetime = TimeSpan.FromDays(30);
+        options.AbsoluteSessionLifetime = TimeSpan.FromDays(90);
         options.RevokeFamilyOnReuse = true;
     })
     .UseJwt(JwtBearerDefaults.AuthenticationScheme, options => {
@@ -228,13 +229,114 @@ JWT clients send `{ "refreshToken": "..." }` in the request body to `/refresh` a
 
 Each successful login creates a separate session (token family). Refresh rotates the token within that family. Reuse of a consumed token revokes only that family, not the user's other sessions. Logout revokes the current family; logout-all revokes all families belonging to the authenticated user. The built-in password-change and add-password endpoints also revoke all refresh-token sessions after a successful password update. Applications implementing password-reset or credential-change flows outside these endpoints should explicitly call `IRefreshTokenService<TKey>.RevokeAllAsync(userId)` after a successful reset.
 
-Refresh tokens are bearer credentials. Clients must store them securely and must not log them. Browser applications should prefer HttpOnly cookies over localStorage. Serialize refresh requests: with strict reuse detection, retrying an old token after a successful rotation (for example, after losing the response) is treated as replay and revokes that session.
+Refresh tokens are bearer credentials. Clients must store them securely and must not log them. Browser applications should prefer HttpOnly cookies over localStorage. Serialize refresh requests: with strict reuse detection, retrying an old token after a successful rotation (for example, after losing the response) is treated as replay and revokes that session. See [Simultaneous refresh](#simultaneous-refresh-and-single-flight-clients).
 
 Revoking refresh tokens does not immediately invalidate access JWTs already issued. Stateless access tokens remain valid until expiration unless the application adds a separate access-token revocation/session-validation mechanism. Keep access-token lifetimes appropriately short.
+
+### Session lifetime
+
+A session has two limits:
+
+- `TokenLifetime` (default 30 days) is how long one refresh token stays valid. Every rotation issues a new token with a fresh `TokenLifetime`.
+- `AbsoluteSessionLifetime` (default 90 days) is how long the whole session lives, counted from the login that created it. Rotation never extends it: each replacement token expires at the earlier of `now + TokenLifetime` and the session's absolute expiry. The last token of a session therefore expires exactly at the absolute limit, after which `/refresh` returns 401 and the user must sign in again.
+
+A stolen refresh token that keeps rotating can no longer keep a session alive forever. The absolute expiry is fixed when the session is created and copied to every replacement, so changing `AbsoluteSessionLifetime` only affects sessions created afterwards. In cookie mode the refresh cookie's expiry follows the capped token expiry; in JWT mode `refreshTokenExpireDate` does.
+
+| Option | Default | Validation (checked at startup) |
+| --- | --- | --- |
+| `TokenLifetime` | 30 days | Greater than zero |
+| `AbsoluteSessionLifetime` | 90 days | At least `TokenLifetime` |
+| `CleanupRetention` | 30 days | At least `TokenLifetime` |
+| `CleanupBatchSize` | 1000 | Between 1 and 10000 |
+
+If you raise `TokenLifetime` above 30 days, raise `CleanupRetention` too; above 90 days, also raise `AbsoluteSessionLifetime`. Startup fails with a message naming the rule that was violated, even if you never call cleanup.
+
+`/refresh` answers 401 for every credential failure: unknown, expired, revoked, reused or past-the-absolute-limit tokens, and accounts that are no longer allowed to sign in. Clients cannot tell these cases apart, by design. Other statuses keep their meaning: 400 for a malformed body, 403 for a disallowed origin in cookie mode, and 429 when the rate limit is exceeded.
+
+### Simultaneous refresh and single-flight clients
+
+A refresh token can be used once. The first request that presents it rotates it; any later request with the same token is a replay. With `RevokeFamilyOnReuse` (the default), a replay revokes the whole session, including the new token the first request received. Rotation itself is atomic in the database, so exactly one of two simultaneous requests succeeds, but the loser ends the session:
+
+| Situation | Result |
+| --- | --- |
+| Two requests (two tabs, or two failed API calls that both trigger a refresh) send the same token at once | One gets 200 with a new token. The other gets 401 and the session is revoked, so the new token stops working too and the user must sign in again |
+| The response is lost after the server rotated (network failure, closed tab) and the client retries with its old token | Treated as replay: 401 and the session is revoked |
+| An old token is presented after the session was already revoked | 401 |
+
+The server cannot tell a careless client from an attacker holding a copy of the token, so the library does not add a grace period. Clients must make sure only one refresh is in flight per session:
+
+- **One request at a time in a tab.** Share a single promise for all callers that need a refresh.
+- **One request at a time across tabs.** Use the Web Locks API (`navigator.locks`) and read the stored credentials after acquiring the lock, because another tab may already have refreshed.
+- **Do not blindly retry an ambiguous failure.** If a refresh request fails without a response, the client cannot know whether the server rotated. Treat the session as ended and ask the user to sign in, rather than retrying with the old token.
+
+JWT client example (TypeScript):
+
+```ts
+// `tokenStore` stands for your own storage wrapper (for example around localStorage or secure storage).
+let inFlight: Promise<string> | null = null;
+
+export function refreshAccessToken(): Promise<string> {
+  // Callers in this tab share one request.
+  inFlight ??= navigator.locks
+    .request("runtimeapps-refresh", async () => {
+      // Read after taking the lock: another tab may have refreshed while we waited.
+      const current = tokenStore.read();
+      if (current.accessTokenExpiresAt - Date.now() > 30_000) {
+        return current.accessToken;
+      }
+
+      const response = await fetch("/api/session/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken: current.refreshToken }),
+      });
+      if (!response.ok) {
+        tokenStore.clear();
+        throw new Error("Session ended");
+      }
+
+      const next = await response.json();
+      tokenStore.write(next); // store the new refresh token before using the access token
+      return next.authenticationToken as string;
+    })
+    .finally(() => {
+      inFlight = null;
+    });
+
+  return inFlight;
+}
+```
+
+Cookie clients do the same without handling the token: the browser sends the newest cookie, so a request that waits for the lock and then calls `/refresh` sends the rotated token and is valid. The lock is still needed so two tabs never send the same cookie value at the same instant.
+
+### Retention and cleanup
+
+Every refresh leaves the rotated token behind as a revoked row. That history is useful for reuse detection and security investigation, but it grows without bound unless it is removed. Cleanup is an explicit operation: the library never schedules it.
+
+```cs
+var cleanup = scope.ServiceProvider.GetRequiredService<IRefreshTokenCleanupService<int>>();
+var batchSize = scope.ServiceProvider.GetRequiredService<IOptions<RefreshTokenOptions>>().Value.CleanupBatchSize;
+
+int deleted;
+do {
+    deleted = await cleanup.CleanupAsync(cancellationToken);
+} while(deleted >= batchSize);
+```
+
+- `CleanupAsync` deletes at most `CleanupBatchSize` records per call and returns the number deleted. Call it until a batch comes back smaller than the batch size. This keeps every statement short and lets you stop between batches.
+- A record is deleted only when it was revoked or rotated more than `CleanupRetention` ago, or it was never revoked and expired more than `CleanupRetention` ago. A token that is still valid is never deleted.
+- `CleanupRetention` must be at least `TokenLifetime`. A consumed token stays recorded for at least as long as it could have been valid, so presenting it still counts as reuse and revokes the session. After retention, a rotated token in a session that is still active is removed; presenting it later returns 401 but no longer revokes the session.
+- Revoked rows are kept for `CleanupRetention` after revocation (including logout and logout-all), which is the window available for investigating an incident. Use a longer retention if you need more.
+- Running cleanup on several instances at the same time is safe. No HTTP endpoint is exposed for cleanup.
+- The EF store indexes `TokenHash` (unique), `(FamilyId, RevokedAt)`, `(UserId, RevokedAt)`, `ExpiresAt` and `RevokedAt`. The last two serve the two branches of the cleanup query.
+
+The [cookie authentication sample](./Samples/RuntimeApps.Authentication.Sample.CookieAuthentication/RefreshTokenCleanupWorker.cs) schedules cleanup with a `BackgroundService`.
 
 ### Custom persistence
 
 Applications that do not use the EF integration can implement `IRefreshTokenStore<TKey>` and register it before startup. Store implementations must make `TryRotateAsync` atomic: consuming the old token and persisting its replacement must succeed or fail as one operation. A non-atomic implementation is not safe for production use.
+
+Custom stores must persist `RefreshToken.AbsoluteExpiresAt` and return it unchanged. A record that comes back without a value is treated as already expired, so a store that drops the field fails closed instead of allowing endless sessions. To support cleanup, also implement `IRefreshTokenCleanupStore<TKey>`: `DeleteInactiveAsync` deletes at most `batchSize` inactive records and must never delete a token that is still valid. Stores that do not implement it keep working; only `CleanupAsync` throws, with a message naming the missing interface.
 
 
 ## EF Core integration
@@ -265,7 +367,7 @@ Table names or schemas can be changed with ordinary EF Core calls afterwards, fo
 - Verification create and resend use `Serializable` transactions. Under heavy concurrency, providers can abort a transaction (deadlock or serialization failure). Configure a retrying execution strategy if this matters for your workload.
 - `VerificationRequest.CodeVerifier` uses an empty string as an "initial" marker. Providers that treat empty strings as `NULL` (for example Oracle) are not supported.
 - Dates are stored with `DateTimeOffsetToBinaryConverter` (a `bigint`, millisecond precision) so that expiry comparisons work on every relational provider, including SQLite.
-- `UserId` columns do not have a foreign key to your users table. Rows for deleted users remain until they expire, and the refresh endpoint rejects (and revokes) a refreshed session whose user no longer exists. To add a foreign key, configure it in your own `OnModelCreating` (for example `modelBuilder.Entity<RefreshToken<int>>().HasOne<IdentityUser<int>>().WithMany().HasForeignKey(token => token.UserId).OnDelete(DeleteBehavior.Cascade)`) and remove orphaned rows before applying the migration. Purging expired rows is the application's responsibility for now.
+- `UserId` columns do not have a foreign key to your users table. Rows for deleted users remain until they expire, and the refresh endpoint rejects (and revokes) a refreshed session whose user no longer exists. To add a foreign key, configure it in your own `OnModelCreating` (for example `modelBuilder.Entity<RefreshToken<int>>().HasOne<IdentityUser<int>>().WithMany().HasForeignKey(token => token.UserId).OnDelete(DeleteBehavior.Cascade)`) and remove orphaned rows before applying the migration. Removing old rows is the application's responsibility; see [Retention and cleanup](#retention-and-cleanup).
 
 ### Migration impact
 
@@ -277,6 +379,19 @@ Adding entities requires a migration for the tables you enable. When upgrading a
 | `CustomChannel` | `nvarchar(128)` / provider equivalent, nullable |
 
 `dotnet ef migrations add <Name>` generates this change. Existing rows keep `NULL` values, which match requests without a custom purpose or channel. Send limits and "supersede pending request" behavior are now scoped per custom purpose and custom channel, so two different custom purposes for the same destination no longer affect each other. No other column, index or table name changes were made.
+
+#### Refresh-token table
+
+New applications only need `dotnet ef migrations add <Name>` after calling `AddRefreshTokenEntity<TKey>()`. An application that already created `AuthenticationRefreshTokens` from an earlier build needs two changes:
+
+| Change | Detail |
+| --- | --- |
+| Column `AbsoluteExpiresAt` | `bigint` / provider equivalent, **not null**, same encoding as `ExpiresAt` |
+| Index on `RevokedAt` | Non-unique; used by cleanup |
+
+Backfill `AbsoluteExpiresAt` from `ExpiresAt` in the same migration (`UPDATE AuthenticationRefreshTokens SET AbsoluteExpiresAt = ExpiresAt`). Existing sessions then end no later than the token they hold today. A row left at the default value is treated as expired, so its user signs in again; this is the safe failure, not data loss. See the cookie sample's `AddRefreshTokenSessionHardening` migration for a complete example.
+
+New options have defaults (`AbsoluteSessionLifetime` 90 days, `CleanupRetention` 30 days, `CleanupBatchSize` 1000). Applications that set `TokenLifetime` above 30 days must also set `CleanupRetention`, and above 90 days `AbsoluteSessionLifetime`; otherwise startup validation fails.
 
 ## Registration with email verification
 
