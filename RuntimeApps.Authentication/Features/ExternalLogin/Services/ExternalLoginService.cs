@@ -28,6 +28,7 @@ namespace RuntimeApps.Authentication.Features.ExternalLogin.Services {
         private readonly IUserLoginManager<TUser> _loginManager;
         private readonly IUserEmailManager<TUser> _emailManager;
         private readonly IUserPasswordManager<TUser> _passwordManager;
+        private readonly ISignInManager<TUser> _signInManager;
         private readonly IExternalLoginEmailTrustPolicy<TUser> _trustPolicy;
         private readonly bool _requireEmailVerification;
         private readonly IRefreshTokenService<TKey> _refreshTokenService;
@@ -38,6 +39,7 @@ namespace RuntimeApps.Authentication.Features.ExternalLogin.Services {
                                     IUserLoginManager<TUser> loginManager,
                                     IUserEmailManager<TUser> emailManager,
                                     IUserPasswordManager<TUser> passwordManager,
+                                    ISignInManager<TUser> signInManager,
                                     IExternalLoginEmailTrustPolicy<TUser> trustPolicy = null,
                                     IOptions<VerificationOptions> verificationOptions = null,
                                     IRefreshTokenService<TKey> refreshTokenService = null,
@@ -47,6 +49,7 @@ namespace RuntimeApps.Authentication.Features.ExternalLogin.Services {
             _loginManager = loginManager;
             _emailManager = emailManager;
             _passwordManager = passwordManager;
+            _signInManager = signInManager;
             _trustPolicy = trustPolicy;
             _requireEmailVerification = verificationOptions?.Value?.RequireEmailVerificationForExternalLogins ?? false;
             _refreshTokenService = refreshTokenService;
@@ -84,6 +87,94 @@ namespace RuntimeApps.Authentication.Features.ExternalLogin.Services {
             return existingEmailUser != null
                 ? await LinkExistingAccountAsync(existingEmailUser, loginInfo)
                 : await CreateAccountAsync(provider.Provider, providerResult, loginInfo, email, trustedEmail);
+        }
+
+        public virtual async Task<Result> LinkAsync(TUser user, LinkExternalLoginModel request, CancellationToken cancellationToken = default) {
+            ArgumentNullException.ThrowIfNull(user);
+            cancellationToken.ThrowIfCancellationRequested();
+            if(string.IsNullOrWhiteSpace(request?.Provider) || string.IsNullOrWhiteSpace(request.Token))
+                return Fail(ResultCode.BadRequest, "InvalidExternalLogin", "Provider and token are required.");
+
+            if(!await IsReauthenticatedAsync(user, request, cancellationToken))
+                return Fail(ResultCode.Forbidden, "ReauthenticationRequired",
+                    "Re-authentication is required to link an external login.");
+
+            cancellationToken.ThrowIfCancellationRequested();
+            var provider = FindProvider(request.Provider);
+            if(provider == null)
+                return Fail(ResultCode.BadRequest, GenericFailureCode, GenericFailureDescription);
+
+            // Only the validated provider subject is used. The provider's email, verified or not, is neither
+            // required to match the account nor copied onto it.
+            var identity = await provider.ValidateAsync(request.Token, cancellationToken);
+            if(identity?.LoginInfo == null)
+                return Fail(ResultCode.BadRequest, GenericFailureCode, GenericFailureDescription);
+
+            cancellationToken.ThrowIfCancellationRequested();
+            var loginInfo = identity.LoginInfo;
+            // One identity per provider per account.
+            var existing = await _loginManager.GetLoginsAsync(user);
+            if(existing.Any(login => SameProvider(login.LoginProvider, loginInfo.LoginProvider)))
+                return Fail(ResultCode.Conflict, "ExternalLoginConflict", "The external login could not be linked.");
+
+            var added = await _loginManager.AddLoginAsync(user, loginInfo);
+            if(!added.Succeeded)
+                return added.Errors.Any(error => error.Code == "LoginAlreadyAssociated")
+                    ? Fail(ResultCode.Conflict, "ExternalLoginConflict", "The external login could not be linked.")
+                    : Fail(ResultCode.BadRequest, GenericFailureCode, GenericFailureDescription);
+
+            // Two concurrent links of different identities for one provider can both pass the check above.
+            var after = await _loginManager.GetLoginsAsync(user);
+            if(after.Count(login => SameProvider(login.LoginProvider, loginInfo.LoginProvider)) > 1) {
+                await _loginManager.RemoveLoginAsync(user, loginInfo.LoginProvider, loginInfo.ProviderKey);
+                return Fail(ResultCode.Conflict, "ExternalLoginConflict", "The external login could not be linked.");
+            }
+
+            return new Result();
+        }
+
+        public virtual async Task<Result> UnlinkAsync(TUser user, string providerName, CancellationToken cancellationToken = default) {
+            ArgumentNullException.ThrowIfNull(user);
+            cancellationToken.ThrowIfCancellationRequested();
+            if(string.IsNullOrWhiteSpace(providerName))
+                return Fail(ResultCode.BadRequest, "InvalidExternalLogin", "Provider is required.");
+
+            var logins = await _loginManager.GetLoginsAsync(user);
+            var matches = logins.Where(login => SameProvider(login.LoginProvider, providerName)).ToList();
+            if(matches.Count == 0)
+                return Fail(ResultCode.BadRequest, "ExternalLoginNotLinked", "The external login is not linked to this account.");
+            if(matches.Count > 1)
+                return Fail(ResultCode.Conflict, "ExternalLoginAmbiguous", "The external login could not be unlinked.");
+
+            var target = matches[0];
+            var otherLogins = logins.Where(login => !ReferenceEquals(login, target));
+            if(!await HasUsableMethodAsync(user, otherLogins))
+                return Fail(ResultCode.Conflict, "LastAuthenticationMethod",
+                    "The last authentication method of the account cannot be removed.");
+
+            var removed = await _loginManager.RemoveLoginAsync(user, target.LoginProvider, target.ProviderKey);
+            if(!removed.Succeeded)
+                return Fail(ResultCode.BadRequest, "ExternalLoginNotUnlinked", "The external login could not be unlinked.");
+
+            // Concurrent unlinks can each pass the check above. Re-check and restore the login so the
+            // account is never left without a way to sign in; concurrent requests fail instead.
+            if(!await HasUsableMethodAsync(user, await _loginManager.GetLoginsAsync(user))) {
+                var restored = await _loginManager.AddLoginAsync(user, target);
+                if(!restored.Succeeded)
+                    _logger?.LogError("Restoring an external login after a rejected unlink failed for provider {Provider}.", target.LoginProvider);
+                return Fail(ResultCode.Conflict, "LastAuthenticationMethod",
+                    "The last authentication method of the account cannot be removed.");
+            }
+
+            await RevokeSessionsAsync(user);
+            return new Result();
+        }
+
+        public virtual async Task<IReadOnlyList<ExternalLoginSummary>> ListLoginsAsync(TUser user, CancellationToken cancellationToken = default) {
+            ArgumentNullException.ThrowIfNull(user);
+            cancellationToken.ThrowIfCancellationRequested();
+            var logins = await _loginManager.GetLoginsAsync(user);
+            return logins.Select(login => new ExternalLoginSummary { Provider = login.LoginProvider }).ToList();
         }
 
         private async Task<Result<TUser>> LinkExistingAccountAsync(TUser existing, UserLoginInfo loginInfo) {
@@ -167,6 +258,39 @@ namespace RuntimeApps.Authentication.Features.ExternalLogin.Services {
             }
         }
 
+        private async Task<bool> IsReauthenticatedAsync(TUser user, LinkExternalLoginModel request, CancellationToken cancellationToken) {
+            if(!string.IsNullOrEmpty(request.CurrentPassword)) {
+                if(_passwordManager == null || !await _passwordManager.HasPasswordAsync(user))
+                    return false;
+                // Counts failures toward lockout, like a password sign-in.
+                var check = await _signInManager.CheckPasswordSignInAsync(user, request.CurrentPassword, true);
+                return check?.Succeeded == true;
+            }
+
+            if(!string.IsNullOrWhiteSpace(request.ReauthenticationProvider) && !string.IsNullOrWhiteSpace(request.ReauthenticationToken)) {
+                var provider = FindProvider(request.ReauthenticationProvider);
+                if(provider == null)
+                    return false;
+                var identity = await provider.ValidateAsync(request.ReauthenticationToken, cancellationToken);
+                if(identity?.LoginInfo == null)
+                    return false;
+                // The fresh identity must be one that is already linked to this very account.
+                var logins = await _loginManager.GetLoginsAsync(user);
+                return logins.Any(login =>
+                    SameProvider(login.LoginProvider, identity.LoginInfo.LoginProvider) &&
+                    string.Equals(login.ProviderKey, identity.LoginInfo.ProviderKey, StringComparison.Ordinal));
+            }
+
+            return false;
+        }
+
+        /// <summary>A usable method is a password, or a linked login whose provider is still registered.</summary>
+        private async Task<bool> HasUsableMethodAsync(TUser user, IEnumerable<UserLoginInfo> logins) {
+            if(_passwordManager != null && await _passwordManager.HasPasswordAsync(user))
+                return true;
+            return logins.Any(login => _providers.Any(provider => SameProvider(provider.Provider, login.LoginProvider)));
+        }
+
         private async Task RevokeSessionsAsync(TUser user) {
             if(_refreshTokenService != null)
                 await _refreshTokenService.RevokeAllAsync(user.Id, CancellationToken.None);
@@ -181,5 +305,7 @@ namespace RuntimeApps.Authentication.Features.ExternalLogin.Services {
         private static Result<TUser> ResolveFailed() =>
             new(ResultCode.BadRequest, Result.CreateErrors(GenericFailureCode, GenericFailureDescription));
 
+        private static Result Fail(ResultCode code, string errorCode, string description) =>
+            new(code, Result.CreateErrors(errorCode, description));
     }
 }

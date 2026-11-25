@@ -43,6 +43,7 @@ namespace RuntimeApps.Authentication.Test {
                 _loginManager.Object,
                 _emailManager.Object,
                 withPasswordManager ? _passwordManager.Object : null,
+                Mock.Of<ISignInManager<IdentityUser>>(),
                 _trustPolicy.Object,
                 Options.Create(new VerificationOptions { RequireEmailVerificationForExternalLogins = _requireVerification }),
                 withRefreshTokens ? _refreshTokens.Object : null);

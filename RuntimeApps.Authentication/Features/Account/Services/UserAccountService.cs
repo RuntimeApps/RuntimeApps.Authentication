@@ -96,6 +96,7 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
                 loginManager ?? userManager as IUserLoginManager<TUser>,
                 emailManager ?? userManager as IUserEmailManager<TUser>,
                 userManager as IUserPasswordManager<TUser>,
+                signInManager,
                 externalLoginEmailTrustPolicy,
                 verificationOptions,
                 refreshTokenService);
