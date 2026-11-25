@@ -81,7 +81,10 @@ public class RegistrationOptionsTest {
     public void RefreshTokenOptions_TokenLifetimeAboveDefaultAbsoluteLifetimeFailsValidationUntilBothAreSet() {
         var failing = new ServiceCollection();
         failing.AddAuthentication().AddRuntimeAppsAuthentication<IdentityUser, IdentityRole, string>()
-            .AddRefreshToken(options => options.TokenLifetime = TimeSpan.FromDays(120));
+            .AddRefreshToken(options => {
+                options.TokenLifetime = TimeSpan.FromDays(120);
+                options.CleanupRetention = TimeSpan.FromDays(120);
+            });
         using var failingProvider = failing.BuildServiceProvider();
         Assert.Throws<OptionsValidationException>(() => failingProvider.GetRequiredService<IOptions<RefreshTokenOptions>>().Value);
 
@@ -90,6 +93,7 @@ public class RegistrationOptionsTest {
             .AddRefreshToken(options => {
                 options.TokenLifetime = TimeSpan.FromDays(120);
                 options.AbsoluteSessionLifetime = TimeSpan.FromDays(120);
+                options.CleanupRetention = TimeSpan.FromDays(120);
             });
         using var validProvider = valid.BuildServiceProvider();
         Assert.Equal(TimeSpan.FromDays(120), validProvider.GetRequiredService<IOptions<RefreshTokenOptions>>().Value.AbsoluteSessionLifetime);
