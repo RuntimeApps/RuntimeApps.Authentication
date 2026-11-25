@@ -48,6 +48,8 @@ namespace RuntimeApps.Authentication.DependencyInjection {
             configuredOptions
                 .Validate(options => options.TokenLifetime > TimeSpan.Zero,
                     "Refresh-token lifetime must be greater than zero.")
+                .Validate(options => options.AbsoluteSessionLifetime >= options.TokenLifetime,
+                    "Absolute session lifetime must be greater than or equal to the refresh-token lifetime.")
                 .Validate(options => options.RefreshRequestsPerMinute > 0,
                     "Refresh request rate limit must be greater than zero.")
                 .Validate(options => !string.IsNullOrWhiteSpace(options.CookieName) &&

@@ -37,7 +37,8 @@ namespace RuntimeApps.Authentication.Test {
                 FamilyId = Guid.NewGuid(),
                 TokenHash = new string('A', 64),
                 CreatedAt = now,
-                ExpiresAt = now.AddDays(30)
+                ExpiresAt = now.AddDays(30),
+                AbsoluteExpiresAt = now.AddDays(90)
             };
             var replacement = new RefreshToken<int> {
                 Id = default,
@@ -45,7 +46,8 @@ namespace RuntimeApps.Authentication.Test {
                 FamilyId = original.FamilyId,
                 TokenHash = new string('B', 64),
                 CreatedAt = now,
-                ExpiresAt = now.AddDays(30)
+                ExpiresAt = now.AddDays(30),
+                AbsoluteExpiresAt = now.AddDays(90)
             };
 
             await store.CreateAsync(original, cancellationToken);
@@ -60,6 +62,8 @@ namespace RuntimeApps.Authentication.Test {
             Assert.NotNull(active);
             Assert.Null(active.RevokedAt);
             Assert.Equal(original.FamilyId, active.FamilyId);
+            Assert.Equal(now.AddDays(90), consumed.AbsoluteExpiresAt);
+            Assert.Equal(now.AddDays(90), active.AbsoluteExpiresAt);
         }
 
         [Fact]
@@ -107,7 +111,8 @@ namespace RuntimeApps.Authentication.Test {
             FamilyId = familyId,
             TokenHash = hashPrefix.PadRight(64, '0'),
             CreatedAt = now,
-            ExpiresAt = now.AddDays(30)
+            ExpiresAt = now.AddDays(30),
+            AbsoluteExpiresAt = now.AddDays(90)
         };
 
         private sealed class TestDbContext : IdentityDbContext<IdentityUser<int>, IdentityRole<int>, int> {

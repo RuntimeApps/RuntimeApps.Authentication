@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.Options;
 using RuntimeApps.Authentication.Features.Account.Contracts;
 using RuntimeApps.Authentication.Features.ExternalLogin.Contracts;
@@ -26,9 +28,10 @@ namespace RuntimeApps.Authentication.Test {
     public class RefreshTokenServiceTest {
         private readonly InMemoryRefreshTokenStore<string> _store = new();
         private readonly MutableTimeProvider _time = new(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
-        private IRefreshTokenService<string> CreateService(bool revokeFamilyOnReuse = true) =>
+        private IRefreshTokenService<string> CreateService(bool revokeFamilyOnReuse = true, int absoluteDays = 90) =>
             new RefreshTokenService<string>(_store, Options.Create(new RefreshTokenOptions {
                 TokenLifetime = TimeSpan.FromDays(30),
+                AbsoluteSessionLifetime = TimeSpan.FromDays(absoluteDays),
                 RevokeFamilyOnReuse = revokeFamilyOnReuse
             }), _time);
 
@@ -122,6 +125,114 @@ namespace RuntimeApps.Authentication.Test {
             Assert.Null(await service.RotateAsync(session.RefreshToken, cancellationToken));
         }
 
+        [Fact]
+        public async Task CreateSession_SetsAbsoluteExpiryAndCapsTokenExpiryByIt() {
+            var cancellationToken = TestContext.Current.CancellationToken;
+            var start = _time.GetUtcNow();
+
+            var normal = await CreateService().CreateSessionAsync("user-1", cancellationToken: cancellationToken);
+            var shortSession = await CreateService(absoluteDays: 30).CreateSessionAsync("user-2", cancellationToken: cancellationToken);
+
+            Assert.Equal(start.AddDays(30), normal.ExpiresAt);
+            Assert.Equal(start.AddDays(90), _store.Tokens.Single(token => token.FamilyId == normal.SessionId).AbsoluteExpiresAt);
+            Assert.Equal(start.AddDays(30), shortSession.ExpiresAt);
+            Assert.Equal(start.AddDays(30), _store.Tokens.Single(token => token.FamilyId == shortSession.SessionId).AbsoluteExpiresAt);
+        }
+
+        [Fact]
+        public async Task RotateAsync_ReplacementKeepsOriginalAbsoluteExpiry() {
+            var service = CreateService();
+            var cancellationToken = TestContext.Current.CancellationToken;
+            var start = _time.GetUtcNow();
+            var first = await service.CreateSessionAsync("user-1", cancellationToken: cancellationToken);
+            _time.Advance(TimeSpan.FromDays(10));
+
+            var second = await service.RotateAsync(first.RefreshToken, cancellationToken);
+
+            Assert.NotNull(second);
+            Assert.Equal(start.AddDays(40), second.ExpiresAt);
+            Assert.All(_store.Tokens, token => Assert.Equal(start.AddDays(90), token.AbsoluteExpiresAt));
+        }
+
+        [Fact]
+        public async Task RotateAsync_RepeatedRotationCannotExtendSessionBeyondAbsoluteExpiry() {
+            var service = CreateService();
+            var cancellationToken = TestContext.Current.CancellationToken;
+            var start = _time.GetUtcNow();
+            var absolute = start.AddDays(90);
+            var session = await service.CreateSessionAsync("user-1", cancellationToken: cancellationToken);
+
+            // Rotate every 20 days: days 20, 40, 60 and 80. The day-80 replacement would reach day 110 without a cap.
+            RefreshTokenSession<string> latest = session;
+            for(var day = 20; day <= 80; day += 20) {
+                _time.Advance(TimeSpan.FromDays(20));
+                latest = await service.RotateAsync(latest.RefreshToken, cancellationToken);
+                Assert.NotNull(latest);
+                Assert.True(latest.ExpiresAt <= absolute);
+            }
+
+            Assert.Equal(absolute, latest.ExpiresAt);
+            Assert.Equal(session.SessionId, latest.SessionId);
+
+            _time.Advance(TimeSpan.FromDays(11));
+            Assert.Null(await service.RotateAsync(latest.RefreshToken, cancellationToken));
+        }
+
+        [Fact]
+        public async Task RotateAsync_RejectsTokenPastAbsoluteExpiryEvenWhenTokenExpiryIsStillInTheFuture() {
+            var service = CreateService();
+            var cancellationToken = TestContext.Current.CancellationToken;
+            var now = _time.GetUtcNow();
+            const string rawToken = "crafted-refresh-token";
+            await _store.CreateAsync(new RefreshToken<string> {
+                Id = default!,
+                UserId = "user-1",
+                FamilyId = Guid.NewGuid(),
+                TokenHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(rawToken))),
+                CreatedAt = now.AddDays(-100),
+                ExpiresAt = now.AddDays(10),
+                AbsoluteExpiresAt = now.AddMinutes(-1)
+            }, cancellationToken);
+
+            Assert.Null(await service.RotateAsync(rawToken, cancellationToken));
+            Assert.Single(_store.Tokens);
+        }
+
+        [Fact]
+        public async Task RotateAsync_RejectsRecordWithoutAbsoluteExpiry() {
+            var service = CreateService();
+            var cancellationToken = TestContext.Current.CancellationToken;
+            var now = _time.GetUtcNow();
+            const string rawToken = "record-without-absolute-expiry";
+            await _store.CreateAsync(new RefreshToken<string> {
+                Id = default!,
+                UserId = "user-1",
+                FamilyId = Guid.NewGuid(),
+                TokenHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(rawToken))),
+                CreatedAt = now,
+                ExpiresAt = now.AddDays(10)
+            }, cancellationToken);
+
+            Assert.Null(await service.RotateAsync(rawToken, cancellationToken));
+        }
+
+        [Fact]
+        public async Task RotateAsync_ConcurrentRotationNearAbsoluteExpiryStaysCapped() {
+            var service = CreateService();
+            var cancellationToken = TestContext.Current.CancellationToken;
+            var absolute = _time.GetUtcNow().AddDays(90);
+            var session = await service.CreateSessionAsync("user-1", cancellationToken: cancellationToken);
+            _time.Advance(TimeSpan.FromDays(85));
+
+            var results = await Task.WhenAll(
+                service.RotateAsync(session.RefreshToken, cancellationToken),
+                service.RotateAsync(session.RefreshToken, cancellationToken));
+
+            var winner = Assert.Single(results, result => result != null);
+            Assert.Equal(absolute, winner.ExpiresAt);
+            Assert.All(_store.Tokens, token => Assert.True(token.ExpiresAt <= token.AbsoluteExpiresAt));
+        }
+
         private sealed class MutableTimeProvider : TimeProvider {
             private DateTimeOffset _now;
             public MutableTimeProvider(DateTimeOffset now) => _now = now;
@@ -190,6 +301,7 @@ namespace RuntimeApps.Authentication.Test {
                 TokenHash = token.TokenHash,
                 CreatedAt = token.CreatedAt,
                 ExpiresAt = token.ExpiresAt,
+                AbsoluteExpiresAt = token.AbsoluteExpiresAt,
                 RevokedAt = token.RevokedAt,
                 ReplacedByTokenId = token.ReplacedByTokenId,
                 HasReplacement = token.HasReplacement,

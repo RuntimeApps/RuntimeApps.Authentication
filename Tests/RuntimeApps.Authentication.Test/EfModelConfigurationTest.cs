@@ -22,6 +22,8 @@ namespace RuntimeApps.Authentication.Test {
             Assert.True(entity.FindProperty(nameof(RefreshToken<int>.SessionName)).IsNullable);
             Assert.True(entity.FindProperty(nameof(RefreshToken<int>.RevokedAt)).IsNullable);
             Assert.IsType<DateTimeOffsetToBinaryConverter>(entity.FindProperty(nameof(RefreshToken<int>.ExpiresAt)).GetValueConverter());
+            Assert.False(entity.FindProperty(nameof(RefreshToken<int>.AbsoluteExpiresAt)).IsNullable);
+            Assert.IsType<DateTimeOffsetToBinaryConverter>(entity.FindProperty(nameof(RefreshToken<int>.AbsoluteExpiresAt)).GetValueConverter());
             Assert.Contains(entity.GetIndexes(), i => i.Properties.Select(p => p.Name).SequenceEqual(new[] { "FamilyId", "RevokedAt" }));
             Assert.Contains(entity.GetIndexes(), i => i.Properties.Select(p => p.Name).SequenceEqual(new[] { "UserId", "RevokedAt" }));
             Assert.Empty(entity.GetForeignKeys());

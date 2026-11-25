@@ -28,13 +28,15 @@ namespace RuntimeApps.Authentication.Features.RefreshTokens.Services {
 
             var now = _timeProvider.GetUtcNow();
             var rawToken = GenerateToken();
+            var absoluteExpiresAt = now.Add(_options.AbsoluteSessionLifetime);
             var record = new RefreshToken<TKey> {
                 Id = default!,
                 UserId = userId,
                 FamilyId = Guid.NewGuid(),
                 TokenHash = HashToken(rawToken),
                 CreatedAt = now,
-                ExpiresAt = now.Add(_options.TokenLifetime),
+                ExpiresAt = Earlier(now.Add(_options.TokenLifetime), absoluteExpiresAt),
+                AbsoluteExpiresAt = absoluteExpiresAt,
                 SessionName = sessionName
             };
 
@@ -60,9 +62,12 @@ namespace RuntimeApps.Authentication.Features.RefreshTokens.Services {
                 return null;
             }
 
-            if(current.ExpiresAt <= now)
+            // The absolute limit is checked separately from ExpiresAt so a record whose ExpiresAt was never capped
+            // (for example one written by a store that does not persist AbsoluteExpiresAt) is still rejected.
+            if(current.ExpiresAt <= now || current.AbsoluteExpiresAt <= now)
                 return null;
 
+            // The replacement inherits the session's absolute expiry and can never outlive it.
             var rawReplacement = GenerateToken();
             var replacement = new RefreshToken<TKey> {
                 Id = default!,
@@ -70,7 +75,8 @@ namespace RuntimeApps.Authentication.Features.RefreshTokens.Services {
                 FamilyId = current.FamilyId,
                 TokenHash = HashToken(rawReplacement),
                 CreatedAt = now,
-                ExpiresAt = now.Add(_options.TokenLifetime),
+                ExpiresAt = Earlier(now.Add(_options.TokenLifetime), current.AbsoluteExpiresAt),
+                AbsoluteExpiresAt = current.AbsoluteExpiresAt,
                 SessionName = current.SessionName
             };
 
@@ -117,6 +123,9 @@ namespace RuntimeApps.Authentication.Features.RefreshTokens.Services {
             RefreshToken = rawToken,
             ExpiresAt = token.ExpiresAt
         };
+
+        private static DateTimeOffset Earlier(DateTimeOffset first, DateTimeOffset second) =>
+            first <= second ? first : second;
 
         private static string GenerateToken() {
             var bytes = RandomNumberGenerator.GetBytes(32);

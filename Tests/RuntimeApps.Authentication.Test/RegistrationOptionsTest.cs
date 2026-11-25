@@ -56,6 +56,46 @@ public class RegistrationOptionsTest {
     }
 
     [Fact]
+    public void RefreshTokenOptions_DefaultAbsoluteSessionLifetimeIsNinetyDays() {
+        var services = new ServiceCollection();
+        services.AddAuthentication().AddRuntimeAppsAuthentication<IdentityUser, IdentityRole, string>()
+            .AddRefreshToken();
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptions<RefreshTokenOptions>>().Value;
+        Assert.Equal(TimeSpan.FromDays(90), options.AbsoluteSessionLifetime);
+    }
+
+    [Fact]
+    public void RefreshTokenOptions_AbsoluteSessionLifetimeBelowTokenLifetimeFailsValidation() {
+        var services = new ServiceCollection();
+        services.AddAuthentication().AddRuntimeAppsAuthentication<IdentityUser, IdentityRole, string>()
+            .AddRefreshToken(options => {
+                options.TokenLifetime = TimeSpan.FromDays(30);
+                options.AbsoluteSessionLifetime = TimeSpan.FromDays(29);
+            });
+        using var provider = services.BuildServiceProvider();
+        Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<RefreshTokenOptions>>().Value);
+    }
+
+    [Fact]
+    public void RefreshTokenOptions_TokenLifetimeAboveDefaultAbsoluteLifetimeFailsValidationUntilBothAreSet() {
+        var failing = new ServiceCollection();
+        failing.AddAuthentication().AddRuntimeAppsAuthentication<IdentityUser, IdentityRole, string>()
+            .AddRefreshToken(options => options.TokenLifetime = TimeSpan.FromDays(120));
+        using var failingProvider = failing.BuildServiceProvider();
+        Assert.Throws<OptionsValidationException>(() => failingProvider.GetRequiredService<IOptions<RefreshTokenOptions>>().Value);
+
+        var valid = new ServiceCollection();
+        valid.AddAuthentication().AddRuntimeAppsAuthentication<IdentityUser, IdentityRole, string>()
+            .AddRefreshToken(options => {
+                options.TokenLifetime = TimeSpan.FromDays(120);
+                options.AbsoluteSessionLifetime = TimeSpan.FromDays(120);
+            });
+        using var validProvider = valid.BuildServiceProvider();
+        Assert.Equal(TimeSpan.FromDays(120), validProvider.GetRequiredService<IOptions<RefreshTokenOptions>>().Value.AbsoluteSessionLifetime);
+    }
+
+    [Fact]
     public void ExternalProviders_RegisterTogetherAndRepeatedCallsDoNotDuplicate() {
         var services = new ServiceCollection();
         var builder = services.AddAuthentication().AddRuntimeAppsAuthentication<IdentityUser, IdentityRole, string>();

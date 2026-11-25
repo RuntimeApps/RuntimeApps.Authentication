@@ -12,6 +12,12 @@ namespace RuntimeApps.Authentication.Features.RefreshTokens.Models {
         public string TokenHash { get; set; }
         public DateTimeOffset CreatedAt { get; set; }
         public DateTimeOffset ExpiresAt { get; set; }
+        /// <summary>
+        /// End of the whole session. It is fixed when the session is created and copied unchanged to every
+        /// rotated replacement, so repeated rotation cannot extend it. ExpiresAt never exceeds this value.
+        /// A record without a value (the default) is treated as already expired.
+        /// </summary>
+        public DateTimeOffset AbsoluteExpiresAt { get; set; }
         public DateTimeOffset? RevokedAt { get; set; }
         /// <summary>Identifier of the replacement token, using the same key type as Id and UserId.</summary>
         public TKey ReplacedByTokenId { get; set; }
