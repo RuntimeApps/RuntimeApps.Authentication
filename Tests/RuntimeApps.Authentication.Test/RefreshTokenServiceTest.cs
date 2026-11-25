@@ -221,9 +221,19 @@ namespace RuntimeApps.Authentication.Test {
             var service = CreateService();
             var cancellationToken = TestContext.Current.CancellationToken;
             var absolute = _time.GetUtcNow().AddDays(90);
-            var session = await service.CreateSessionAsync("user-1", cancellationToken: cancellationToken);
-            _time.Advance(TimeSpan.FromDays(85));
+            RefreshTokenSession<string> session = await service.CreateSessionAsync("user-1", cancellationToken: cancellationToken);
 
+            // A single token only lives 30 days, so keep the session alive by rotating at days 25, 50 and 75.
+            // The day-75 replacement is already capped at the absolute expiry (day 90).
+            for(var i = 0; i < 3; i++) {
+                _time.Advance(TimeSpan.FromDays(25));
+                session = await service.RotateAsync(session.RefreshToken, cancellationToken);
+                Assert.NotNull(session);
+            }
+            Assert.Equal(absolute, session.ExpiresAt);
+
+            // Day 85: the live token is still valid and a fresh 30-day window would reach day 115.
+            _time.Advance(TimeSpan.FromDays(10));
             var results = await Task.WhenAll(
                 service.RotateAsync(session.RefreshToken, cancellationToken),
                 service.RotateAsync(session.RefreshToken, cancellationToken));
