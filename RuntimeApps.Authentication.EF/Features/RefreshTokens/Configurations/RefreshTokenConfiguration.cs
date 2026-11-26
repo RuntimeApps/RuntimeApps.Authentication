@@ -21,6 +21,7 @@ namespace RuntimeApps.Authentication.EF.Features.RefreshTokens.Configurations {
             // supported consistently by relational providers such as SQLite.
             builder.Property(token => token.CreatedAt).HasConversion(new DateTimeOffsetToBinaryConverter());
             builder.Property(token => token.ExpiresAt).HasConversion(new DateTimeOffsetToBinaryConverter());
+            builder.Property(token => token.AbsoluteExpiresAt).IsRequired().HasConversion(new DateTimeOffsetToBinaryConverter());
             builder.Property(token => token.RevokedAt).HasConversion(new DateTimeOffsetToBinaryConverter());
             builder.Property(token => token.TokenHash).HasMaxLength(64).IsRequired();
             builder.Property(token => token.SessionName).HasMaxLength(100);
@@ -29,6 +30,9 @@ namespace RuntimeApps.Authentication.EF.Features.RefreshTokens.Configurations {
             builder.HasIndex(token => new { token.UserId, token.RevokedAt });
             builder.HasIndex(token => new { token.FamilyId, token.RevokedAt });
             builder.HasIndex(token => token.ExpiresAt);
+            // Serves the revoked/rotated branch of cleanup; (UserId, RevokedAt) and (FamilyId, RevokedAt) do not
+            // support a range scan on RevokedAt alone.
+            builder.HasIndex(token => token.RevokedAt);
         }
     }
 }

@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using RuntimeApps.Authentication.Features.RefreshTokens.Contracts;
 using RuntimeApps.Authentication.Features.RefreshTokens.Models;
@@ -5,7 +6,7 @@ namespace RuntimeApps.Authentication.EF.Features.RefreshTokens.Stores {
     /// <summary>
     /// EF Core store. Atomic rotation requires a relational provider with transaction support.
     /// </summary>
-    public sealed class EfRefreshTokenStore<TDbContext, TKey>: IRefreshTokenStore<TKey>
+    public sealed class EfRefreshTokenStore<TDbContext, TKey>: IRefreshTokenStore<TKey>, IRefreshTokenCleanupStore<TKey>
         where TDbContext : DbContext
         where TKey : IEquatable<TKey> {
         private readonly TDbContext _dbContext;
@@ -116,6 +117,44 @@ namespace RuntimeApps.Authentication.EF.Features.RefreshTokens.Stores {
             await _dbContext.Set<RefreshToken<TKey>>()
                 .Where(token => token.FamilyId == familyId && token.RevokedAt == null)
                 .ExecuteUpdateAsync(setters => setters.SetProperty(token => token.RevokedAt, revokedAt), cancellationToken);
+        }
+
+        public async Task<int> DeleteInactiveAsync(
+            DateTimeOffset now,
+            TimeSpan retention,
+            int batchSize,
+            CancellationToken cancellationToken = default) {
+            if(!_dbContext.Database.IsRelational())
+                throw new NotSupportedException("Refresh-token cleanup requires a relational EF Core provider.");
+            ArgumentOutOfRangeException.ThrowIfLessThan(retention, TimeSpan.Zero);
+            ArgumentOutOfRangeException.ThrowIfLessThan(batchSize, 1);
+
+            // retention >= 0 keeps the cutoff at or before now, so an unrevoked token that is still valid
+            // (ExpiresAt > now) can never match.
+            var cutoff = now - retention;
+            Expression<Func<RefreshToken<TKey>, bool>> isInactive = token =>
+                (token.RevokedAt != null && token.RevokedAt < cutoff) ||
+                (token.RevokedAt == null && token.ExpiresAt < cutoff);
+
+            var tokens = _dbContext.Set<RefreshToken<TKey>>();
+            // Select a bounded set of keys first, then delete by key. This stays portable across providers
+            // (not every provider supports LIMIT inside a DELETE ... WHERE IN subquery) and keeps each
+            // statement short. The predicate is applied again to the delete so a row is only removed if it
+            // is still inactive when the delete runs.
+            var ids = await tokens
+                .AsNoTracking()
+                .Where(isInactive)
+                .OrderBy(token => token.Id)
+                .Select(token => token.Id)
+                .Take(batchSize)
+                .ToListAsync(cancellationToken);
+            if(ids.Count == 0)
+                return 0;
+
+            return await tokens
+                .Where(isInactive)
+                .Where(token => ids.Contains(token.Id))
+                .ExecuteDeleteAsync(cancellationToken);
         }
 
         public async Task<int> RevokeAllAsync(TKey userId, DateTimeOffset revokedAt, CancellationToken cancellationToken = default) =>

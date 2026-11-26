@@ -56,6 +56,10 @@ namespace RuntimeApps.Authentication.Sample.CookieAuthentication.Migrations
                         .HasConversion<long>()
                         .HasColumnType("bigint");
 
+                    b.Property<DateTimeOffset>("AbsoluteExpiresAt")
+                        .HasConversion(new DateTimeOffsetToBinaryConverter())
+                        .HasColumnType("bigint");
+
                     b.Property<DateTimeOffset?>("RevokedAt")
                         .HasConversion(new DateTimeOffsetToBinaryConverter())
                         .HasColumnType("bigint");
@@ -82,6 +86,8 @@ namespace RuntimeApps.Authentication.Sample.CookieAuthentication.Migrations
                     b.HasIndex("FamilyId", "RevokedAt");
 
                     b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("RevokedAt");
 
                     b.ToTable("AuthenticationRefreshTokens", (string)null);
                 });
