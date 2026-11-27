@@ -19,5 +19,15 @@ namespace RuntimeApps.Authentication.Shared.Models {
         public string VerificationHandle { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public DateTimeOffset? VerificationExpiresAt { get; set; }
+        /// <summary>
+        /// Opaque handle of a pending second-factor challenge. Set only on the metadata of a login that still needs
+        /// a second step; such a result carries no access or refresh token.
+        /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string TwoFactorChallenge { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public DateTimeOffset? TwoFactorExpiresAt { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public IReadOnlyList<TwoFactorMethodInfo> TwoFactorMethods { get; set; }
     }
 }
