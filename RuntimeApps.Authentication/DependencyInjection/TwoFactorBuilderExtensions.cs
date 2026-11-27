@@ -55,6 +55,7 @@ public static class TwoFactorBuilderExtensions {
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, TwoFactorMethodsStartupValidator<TUser>>());
         builder.Services.TryAddSingleton<TwoFactorFeatureMarker>();
         builder.Services.TryAddSingleton(TimeProvider.System);
+        builder.Services.TryAddSingleton<ITwoFactorRequestLimiter, TwoFactorRequestLimiter>();
         builder.Services.TryAddScoped<ITwoFactorCleanupService<TKey>, TwoFactorCleanupService<TKey>>();
         return builder;
     }
