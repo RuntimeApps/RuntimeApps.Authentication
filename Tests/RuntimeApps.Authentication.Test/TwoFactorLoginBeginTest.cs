@@ -5,6 +5,7 @@ using RuntimeApps.Authentication.Features.TwoFactor.Contracts;
 using RuntimeApps.Authentication.Features.TwoFactor.Models;
 using RuntimeApps.Authentication.Features.TwoFactor.Services;
 using RuntimeApps.Authentication.Features.Verification.Services;
+using RuntimeApps.Authentication.Identity.Contracts;
 
 namespace RuntimeApps.Authentication.Test;
 
@@ -23,7 +24,13 @@ public class TwoFactorLoginBeginTest {
             .Returns(Task.CompletedTask);
 
         public TwoFactorLoginService<IdentityUser<int>, int> Service(params FakeTwoFactorMethod[] methods) =>
-            new(Store.Object, methods, Microsoft.Extensions.Options.Options.Create(Options), new TestClock(Now));
+            new(Store.Object, methods, Microsoft.Extensions.Options.Options.Create(Options), new TestClock(Now),
+                Mock.Of<IUserManager<IdentityUser<int>>>(), Mock.Of<IUserLockoutManager<IdentityUser<int>>>(),
+                new TwoFactorAccountEligibility<IdentityUser<int>, int>(
+                    Mock.Of<IUserLockoutManager<IdentityUser<int>>>(), Mock.Of<IUserLoginManager<IdentityUser<int>>>(),
+                    Mock.Of<ISignInManager<IdentityUser<int>>>(),
+                    Microsoft.Extensions.Options.Options.Create(new RuntimeApps.Authentication.Features.Verification.Models.VerificationOptions())),
+                Mock.Of<RuntimeApps.Authentication.Features.Account.Contracts.IAuthenticationSessionIssuer<IdentityUser<int>>>());
     }
 
     [Fact]
