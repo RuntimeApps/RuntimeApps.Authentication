@@ -37,6 +37,17 @@ public interface ITwoFactorMethod<TUser> where TUser : class {
         throw new NotSupportedException($"The '{Name}' two-factor method does not deliver codes.");
 
     /// <summary>
+    /// Returns the canonical form of a submitted code, or null when it is malformed. The framework uses the
+    /// result for replay protection, so equivalent submissions (for example "123 456" and "123456") must map
+    /// to the same string. The default removes whitespace and rejects empty or over-long (64+) input.
+    /// </summary>
+    string NormalizeCode(string code) {
+        if(string.IsNullOrWhiteSpace(code) || code.Length > 64) return null;
+        var normalized = string.Concat(code.Where(c => !char.IsWhiteSpace(c)));
+        return normalized.Length == 0 || normalized.Length > 32 ? null : normalized;
+    }
+
+    /// <summary>
     /// Checks a login code. Return false for any invalid, expired or malformed code; do not throw for bad input.
     /// Replay and attempt limits are enforced by the framework.
     /// </summary>

@@ -53,6 +53,9 @@ public sealed class AuthenticatorTwoFactorMethod<TUser>(
         });
     }
 
+    /// <summary>Removes spaces and hyphens; returns null unless exactly six ASCII digits remain.</summary>
+    public string NormalizeCode(string code) => TryNormalizeCode(code, out var normalized) ? normalized : null;
+
     public Task<bool> ConfirmEnrollmentAsync(TUser user, string code, CancellationToken cancellationToken) =>
         VerifyAsync(user, code, cancellationToken);
 
