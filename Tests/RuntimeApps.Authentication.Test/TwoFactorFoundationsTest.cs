@@ -73,7 +73,9 @@ public class TwoFactorFoundationsTest {
 
     [Fact]
     public void WithoutAddTwoFactor_NothingIsRegistered_AndBehaviorIsUnchanged() {
-        using var provider = CreateServices().BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+        var services = CreateServices();
+        services.AddOptions(); // IOptions<> is otherwise only registered by features such as AddTwoFactor
+        using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
         using var scope = provider.CreateScope();
 
         Assert.Empty(scope.ServiceProvider.GetServices<ITwoFactorMethod<IdentityUser>>());
