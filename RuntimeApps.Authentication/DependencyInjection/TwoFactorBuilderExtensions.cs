@@ -53,6 +53,7 @@ public static class TwoFactorBuilderExtensions {
             TokenOptions.DefaultAuthenticatorProvider, new TokenProviderDescriptor(typeof(AuthenticatorTokenProvider<TUser>))));
         builder.Services.TryAddEnumerable(ServiceDescriptor.Scoped<ITwoFactorMethod<TUser>, AuthenticatorTwoFactorMethod<TUser>>());
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, TwoFactorMethodsStartupValidator<TUser>>());
+        builder.Services.TryAddSingleton<TwoFactorFeatureMarker>();
         builder.Services.TryAddSingleton(TimeProvider.System);
         builder.Services.TryAddScoped<ITwoFactorCleanupService<TKey>, TwoFactorCleanupService<TKey>>();
         return builder;
