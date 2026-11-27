@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using RuntimeApps.Authentication.Features.Account.Contracts;
 using RuntimeApps.Authentication.Features.ExternalLogin.Contracts;
 using RuntimeApps.Authentication.Features.ExternalLogin.Services;
+using RuntimeApps.Authentication.Features.TwoFactor.Contracts;
 using RuntimeApps.Authentication.Features.Verification.Contracts;
 using RuntimeApps.Authentication.Features.RefreshTokens.Contracts;
 using RuntimeApps.Authentication.Features.RefreshTokens.Models;
@@ -22,6 +23,7 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
         private readonly VerificationOptions _verificationOptions;
         private readonly IVerificationWorkflowService<TUser, TKey> _verificationWorkflow;
         private readonly IAuthenticationSessionIssuer<TUser> _sessionIssuer;
+        private readonly ITwoFactorLoginService<TUser> _twoFactorLogin;
 
         // Preserve the original public constructor for existing compiled consumers.
         public UserAccountService(IUserManager<TUser> userManager,
@@ -63,9 +65,39 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
                    (IExternalLoginService<TUser>)null) {
         }
 
+        // Preserve the previous public constructor signature. It has no optional parameters so that calls
+        // with fewer arguments bind to the constructor below, which is also the one dependency injection selects.
+        public UserAccountService(IUserManager<TUser> userManager,
+                                  ISignInManager<TUser> signInManager,
+                                  IEnumerable<IExternalLoginProvider<TUser>> externalLoginProviders,
+                                  IAuthenticationHandlerProvider authenticationHandlerProvider,
+                                  IHttpContextAccessor contextAccessor,
+                                  IUserClaimsPrincipalFactory<TUser> userClaimsPrincipalFactory,
+                                  IAuthenticationSchemeProvider authenticationSchemeProvider,
+                                  IJwtProvider<TUser> jwtUtils,
+                                  IRefreshTokenService<TKey> refreshTokenService,
+                                  IOptions<RefreshTokenOptions> refreshTokenOptions,
+                                  IExternalLoginEmailTrustPolicy<TUser> externalLoginEmailTrustPolicy,
+                                  IOptions<VerificationOptions> verificationOptions,
+                                  IVerificationWorkflowService<TUser, TKey> verificationWorkflow,
+                                  IUserLoginManager<TUser> loginManager,
+                                  IUserEmailManager<TUser> emailManager,
+                                  IAuthenticationSessionIssuer<TUser> sessionIssuer,
+                                  IExternalLoginService<TUser> externalLoginService)
+            : this(userManager, signInManager, externalLoginProviders, authenticationHandlerProvider,
+                   contextAccessor, userClaimsPrincipalFactory, authenticationSchemeProvider,
+                   jwtUtils, refreshTokenService, refreshTokenOptions, externalLoginEmailTrustPolicy,
+                   verificationOptions, verificationWorkflow, loginManager, emailManager, sessionIssuer,
+                   externalLoginService, (ITwoFactorLoginService<TUser>)null) {
+        }
+
         /// <param name="externalLoginService">
         /// Resolves accounts for external logins. When omitted, a default service is composed from the
         /// other dependencies, so existing constructors and registrations keep working.
+        /// </param>
+        /// <param name="twoFactorLogin">
+        /// Starts the second login step. When omitted (two-factor authentication is not registered) the
+        /// behavior is unchanged: a sign-in that requires two factors is reported without a challenge.
         /// </param>
         public UserAccountService(IUserManager<TUser> userManager,
                                   ISignInManager<TUser> signInManager,
@@ -83,7 +115,9 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
                                   IUserLoginManager<TUser> loginManager = null,
                                   IUserEmailManager<TUser> emailManager = null,
                                   IAuthenticationSessionIssuer<TUser> sessionIssuer = null,
-                                  IExternalLoginService<TUser> externalLoginService = null) {
+                                  IExternalLoginService<TUser> externalLoginService = null,
+                                  ITwoFactorLoginService<TUser> twoFactorLogin = null) {
+            _twoFactorLogin = twoFactorLogin;
             _userManager = userManager;
             _signInManager = signInManager;
             _contextAccessor = contextAccessor;
@@ -146,10 +180,34 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
 
             var signInResult = await _signInManager.PasswordSignInAsync(userInfo, password, false, true);
             cancellationToken.ThrowIfCancellationRequested();
+            if(signInResult.RequiresTwoFactor && _twoFactorLogin != null)
+                return await BeginTwoFactorAsync(userInfo, cancellationToken);
             if(!signInResult.Succeeded)
                 return GetIdentityError(signInResult);
 
             return await GenerateTokenAsync(userInfo, cancellationToken);
+        }
+
+        /// <summary>
+        /// The password was correct but a second step is required. No session is issued unless the application
+        /// explicitly allows users without an enrolled method to sign in.
+        /// </summary>
+        protected virtual async Task<Result<TUser, Token>> BeginTwoFactorAsync(TUser user, CancellationToken cancellationToken = default) {
+            var start = await _twoFactorLogin.BeginAsync(user, cancellationToken);
+            if(start.SignInAllowed) {
+                // Identity does not reset the failed-access count while a second step is pending.
+                if(_userManager is IUserLockoutManager<TUser> lockout)
+                    await lockout.ResetAccessFailedCountAsync(user);
+                return await GenerateTokenAsync(user, cancellationToken);
+            }
+
+            return new Result<TUser, Token>(ResultCode.Accepted, Result.CreateErrors("TwoFactorRequired", "A second authentication step is required.")) {
+                Meta = new Token {
+                    TwoFactorChallenge = start.Challenge,
+                    TwoFactorExpiresAt = start.ExpiresAt,
+                    TwoFactorMethods = start.Methods
+                }
+            };
         }
 
         public virtual Task<Result<TUser, Token>> CompleteRegistrationAsync(TUser user, CancellationToken cancellationToken = default) {
