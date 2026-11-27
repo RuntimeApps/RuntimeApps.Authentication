@@ -18,6 +18,19 @@ public sealed class TwoFactorOptions {
     /// <summary>Unconsumed login challenges kept per user. When exceeded, the oldest is superseded. Default 5.</summary>
     public int MaxPendingChallengesPerUser { get; set; } = 5;
 
+    /// <summary>
+    /// How long an accepted code is remembered to reject replay. Must cover the longest time a code stays valid:
+    /// Identity accepts an authenticator code for about 150 seconds. Raise it for delivery methods with
+    /// longer-lived codes. Default 10 minutes (minimum 3 minutes).
+    /// </summary>
+    public TimeSpan UsedCodeRetention { get; set; } = TimeSpan.FromMinutes(10);
+
+    /// <summary>How long after expiry a login challenge row is kept before cleanup may delete it. Default 1 hour.</summary>
+    public TimeSpan CleanupRetention { get; set; } = TimeSpan.FromHours(1);
+
+    /// <summary>Maximum rows one cleanup call deletes. Default 1000.</summary>
+    public int CleanupBatchSize { get; set; } = 1000;
+
     public void Validate() {
         if(string.IsNullOrWhiteSpace(Issuer) || Issuer.Length > 100 || Issuer.Contains(':') || Issuer.Any(char.IsControl))
             throw new InvalidOperationException("A two-factor issuer is required. It must be at most 100 characters and must not contain ':' or control characters.");
@@ -27,5 +40,11 @@ public sealed class TwoFactorOptions {
             throw new InvalidOperationException("The two-factor attempt limit per challenge must be between 1 and 10.");
         if(MaxPendingChallengesPerUser is < 1 or > 20)
             throw new InvalidOperationException("The pending two-factor challenge limit per user must be between 1 and 20.");
+        if(UsedCodeRetention < TimeSpan.FromMinutes(3) || UsedCodeRetention > TimeSpan.FromDays(1))
+            throw new InvalidOperationException("The used-code retention must be between 3 minutes and 1 day.");
+        if(CleanupRetention < TimeSpan.Zero || CleanupRetention > TimeSpan.FromDays(30))
+            throw new InvalidOperationException("The two-factor cleanup retention must be between zero and 30 days.");
+        if(CleanupBatchSize is < 1 or > 10000)
+            throw new InvalidOperationException("The two-factor cleanup batch size must be between 1 and 10000.");
     }
 }

@@ -45,7 +45,7 @@ public static class TwoFactorBuilderExtensions {
         if(configuration != null) options.Bind(configuration.GetSection(TwoFactorOptions.SectionName));
         if(configure != null) options.Configure(configure);
         options.Validate(o => { try { o.Validate(); return true; } catch(InvalidOperationException) { return false; } },
-            "Two-factor options are invalid. An Issuer is required; check the challenge lifetime and attempt limits.").ValidateOnStart();
+            "Two-factor options are invalid. An Issuer is required; check the challenge, retention, cleanup and attempt settings.").ValidateOnStart();
 
         // Identity resolves provider types from DI when UserManager is created.
         builder.Services.TryAddTransient<AuthenticatorTokenProvider<TUser>>();
@@ -53,6 +53,8 @@ public static class TwoFactorBuilderExtensions {
             TokenOptions.DefaultAuthenticatorProvider, new TokenProviderDescriptor(typeof(AuthenticatorTokenProvider<TUser>))));
         builder.Services.TryAddEnumerable(ServiceDescriptor.Scoped<ITwoFactorMethod<TUser>, AuthenticatorTwoFactorMethod<TUser>>());
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, TwoFactorMethodsStartupValidator<TUser>>());
+        builder.Services.TryAddSingleton(TimeProvider.System);
+        builder.Services.TryAddScoped<ITwoFactorCleanupService<TKey>, TwoFactorCleanupService<TKey>>();
         return builder;
     }
 }
