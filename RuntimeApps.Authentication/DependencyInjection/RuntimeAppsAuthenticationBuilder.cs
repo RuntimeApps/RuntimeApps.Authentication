@@ -90,6 +90,14 @@ namespace RuntimeApps.Authentication.DependencyInjection {
             Services.TryAddScoped<IUserLockoutManager<TUser>>(sp => sp.GetRequiredService<RuntimeAppsUserManager<TUser>>());
             Services.TryAddScoped<IUserTokenManager<TUser>>(sp => sp.GetRequiredService<RuntimeAppsUserManager<TUser>>());
         }
+        /// <summary>
+        /// Adds a custom two-factor method (for example email or SMS), e.g. <c>builder.AddTwoFactorMethod&lt;MyEmailMethod&gt;()</c>.
+        /// The framework applies attempt limits, lockout, replay protection and throttling to it.
+        /// </summary>
+        public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddTwoFactorMethod<TMethod>() where TMethod : class, Features.TwoFactor.Contracts.ITwoFactorMethod<TUser> {
+            TwoFactorBuilderExtensions.AddTwoFactorMethodCore<TUser, TMethod>(Services);
+            return this;
+        }
         public RuntimeAppsAuthenticationBuilder<TUser, TRole, TKey> AddUserMapper<TUserDto>(Func<TUser, TUserDto> toDto, Func<TUserDto, TUser> toUser) where TUserDto : class {
             ArgumentNullException.ThrowIfNull(toDto); ArgumentNullException.ThrowIfNull(toUser);
             Services.Replace(ServiceDescriptor.Singleton<IUserMapper<TUser, TUserDto>>(new DelegateUserMapper<TUser, TUserDto>(toDto, toUser)));
