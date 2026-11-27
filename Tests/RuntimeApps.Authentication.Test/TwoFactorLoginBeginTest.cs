@@ -65,7 +65,7 @@ public class TwoFactorLoginBeginTest {
 
         var start = await context.Service(authenticator, sms, email).BeginAsync(User, TestContext.Current.CancellationToken);
 
-        Assert.Equal([new TwoFactorMethodInfo("authenticator", false), new TwoFactorMethodInfo("sms", true)], start.Methods);
+        Assert.Equal(new[] { new TwoFactorMethodInfo("authenticator", false), new TwoFactorMethodInfo("sms", true) }, start.Methods);
     }
 
     [Fact]
