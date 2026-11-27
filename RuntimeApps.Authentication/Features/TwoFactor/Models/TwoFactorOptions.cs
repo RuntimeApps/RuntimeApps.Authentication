@@ -31,6 +31,15 @@ public sealed class TwoFactorOptions {
     /// <summary>Maximum rows one cleanup call deletes. Default 1000.</summary>
     public int CleanupBatchSize { get; set; } = 1000;
 
+    /// <summary>
+    /// What login does when a user has two-factor enabled but no enrolled method. The default,
+    /// <see cref="TwoFactorNoMethodBehavior.RequireTwoFactor"/>, is fail-closed.
+    /// </summary>
+    public TwoFactorNoMethodBehavior NoEnrolledMethodBehavior { get; set; } = TwoFactorNoMethodBehavior.RequireTwoFactor;
+
+    /// <summary>Second-factor completion requests accepted per minute from one client IP address. Default 10.</summary>
+    public int CompleteRequestsPerMinute { get; set; } = 10;
+
     public void Validate() {
         if(string.IsNullOrWhiteSpace(Issuer) || Issuer.Length > 100 || Issuer.Contains(':') || Issuer.Any(char.IsControl))
             throw new InvalidOperationException("A two-factor issuer is required. It must be at most 100 characters and must not contain ':' or control characters.");
@@ -44,6 +53,10 @@ public sealed class TwoFactorOptions {
             throw new InvalidOperationException("The used-code retention must be between 3 minutes and 1 day.");
         if(CleanupRetention < TimeSpan.Zero || CleanupRetention > TimeSpan.FromDays(30))
             throw new InvalidOperationException("The two-factor cleanup retention must be between zero and 30 days.");
+        if(!Enum.IsDefined(NoEnrolledMethodBehavior))
+            throw new InvalidOperationException("The behavior for users without an enrolled two-factor method is not a valid value.");
+        if(CompleteRequestsPerMinute is < 1 or > 1000)
+            throw new InvalidOperationException("The two-factor completion request limit must be between 1 and 1000 per minute.");
         if(CleanupBatchSize is < 1 or > 10000)
             throw new InvalidOperationException("The two-factor cleanup batch size must be between 1 and 10000.");
     }
