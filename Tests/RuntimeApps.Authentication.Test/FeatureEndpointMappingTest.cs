@@ -164,7 +164,7 @@ public sealed class FeatureEndpointMappingTest {
 
     private static RouteEndpoint MapTwoFactor(TestHost host) {
         host.Endpoints.MapAuthenticationApi<IdentityUser<int>, TestUserDto, int>();
-        return Endpoints(host).OfType<RouteEndpoint>().Single(e => e.RoutePattern.RawText == "login/two-factor");
+        return Endpoints(host).OfType<RouteEndpoint>().Single(e => e.RoutePattern.RawText != null && e.RoutePattern.RawText.EndsWith("login/two-factor", StringComparison.Ordinal));
     }
 
     private static Mock<ITwoFactorLoginService<IdentityUser<int>>> TwoFactorService(TestHost host) =>
@@ -177,7 +177,7 @@ public sealed class FeatureEndpointMappingTest {
         using var host = CreateHost(includeVerificationDependencies: false);
         host.Endpoints.MapAuthenticationApi<IdentityUser<int>, TestUserDto, int>();
 
-        Assert.DoesNotContain(Endpoints(host).OfType<RouteEndpoint>(), e => e.RoutePattern.RawText == "login/two-factor");
+        Assert.DoesNotContain(Endpoints(host).OfType<RouteEndpoint>(), e => e.RoutePattern.RawText != null && e.RoutePattern.RawText.EndsWith("login/two-factor", StringComparison.Ordinal));
     }
 
     [Fact]
