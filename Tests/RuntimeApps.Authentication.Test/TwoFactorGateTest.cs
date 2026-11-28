@@ -84,6 +84,58 @@ public class TwoFactorGateTest {
         Assert.Equal(1, await harness.Users.GetAccessFailedCountAsync(user));
     }
 
+    [Fact]
+    public async Task CorrectPassword_DoesNotResetFailedCount_ForFlaggedUserWithoutAnIdentityProvider() {
+        // Stands in for a user enrolled only in a delivery method (SMS/email), which Identity does not know as a provider.
+        await using var harness = await Harness.CreateAsync(withTwoFactor: true);
+        var user = await harness.CreateUserAsync(twoFactorEnabled: true);
+        await harness.Users.AccessFailedAsync(user);
+
+        var result = await harness.SignIn.PasswordSignInAsync(user, Password, false, true);
+
+        Assert.True(result.RequiresTwoFactor);
+        Assert.Equal(1, await harness.Users.GetAccessFailedCountAsync(user));
+    }
+
+    [Fact]
+    public async Task CorrectPassword_StillResetsFailedCount_ForUnflaggedUser() {
+        await using var harness = await Harness.CreateAsync(withTwoFactor: true);
+        var user = await harness.CreateUserAsync(twoFactorEnabled: false);
+        await harness.Users.AccessFailedAsync(user);
+
+        var result = await harness.SignIn.PasswordSignInAsync(user, Password, false, true);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(0, await harness.Users.GetAccessFailedCountAsync(user));
+    }
+
+    [Fact]
+    public async Task WrongPasswords_StillLockOutFlaggedUser_AndLockedUserIsRejected() {
+        await using var harness = await Harness.CreateAsync(withTwoFactor: true);
+        var user = await harness.CreateUserAsync(twoFactorEnabled: true);
+
+        SignInResult last = null;
+        for(var i = 0; i < 5; i++)
+            last = await harness.SignIn.PasswordSignInAsync(user, "wrong-password", false, true);
+
+        Assert.True(last.IsLockedOut);
+        var correctWhileLocked = await harness.SignIn.PasswordSignInAsync(user, Password, false, true);
+        Assert.True(correctWhileLocked.IsLockedOut);
+        Assert.False(correctWhileLocked.RequiresTwoFactor);
+    }
+
+    [Fact]
+    public async Task WithoutTwoFactor_ResetBehaviorIsUnchanged() {
+        await using var harness = await Harness.CreateAsync(withTwoFactor: false);
+        var user = await harness.CreateUserAsync(twoFactorEnabled: true);
+        await harness.Users.AccessFailedAsync(user);
+
+        var result = await harness.SignIn.PasswordSignInAsync(user, Password, false, true);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(0, await harness.Users.GetAccessFailedCountAsync(user));
+    }
+
     private sealed class Harness : IAsyncDisposable {
         private readonly SqliteConnection _connection;
         private readonly ServiceProvider _provider;
