@@ -13,6 +13,7 @@ using RuntimeApps.Authentication.Features.Account.Models;
 using RuntimeApps.Authentication.Features.Registration.Contracts;
 using RuntimeApps.Authentication.Features.ExternalLogin.Contracts;
 using RuntimeApps.Authentication.Features.TwoFactor.Contracts;
+using RuntimeApps.Authentication.Features.TwoFactor.Models;
 using RuntimeApps.Authentication.Features.Verification.Contracts;
 using RuntimeApps.Authentication.Identity.Contracts;
 using RuntimeApps.Authentication.Shared.Models;
