@@ -14,6 +14,7 @@ using RuntimeApps.Authentication.Features.Registration.Contracts;
 using RuntimeApps.Authentication.Features.ExternalLogin.Contracts;
 using RuntimeApps.Authentication.Features.Verification.Contracts;
 using RuntimeApps.Authentication.Identity.Contracts;
+using RuntimeApps.Authentication.Shared.Models;
 
 namespace RuntimeApps.Authentication.Test;
 
@@ -95,6 +96,72 @@ public sealed class FeatureEndpointMappingTest {
     }
 
     [Fact]
+    public async Task Login_TwoFactorRequired_Returns202WithChallengeAndNoToken() {
+        using var host = CreateHost(includeVerificationDependencies: false);
+        host.Endpoints.MapAuthenticationApi<IdentityUser<int>, TestUserDto, int>();
+        var login = Endpoints(host).OfType<RouteEndpoint>().Single();
+        var expires = new DateTimeOffset(2026, 1, 1, 9, 5, 0, TimeSpan.Zero);
+        Mock.Get(host.Endpoints.ServiceProvider.GetRequiredService<IUserAccountService<IdentityUser<int>>>())
+            .Setup(service => service.LoginAsync("alice", "password", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Result<IdentityUser<int>, Token>(ResultCode.Accepted, Result.CreateErrors("TwoFactorRequired", "A second authentication step is required.")) {
+                // A token in Meta must never reach the response, even by mistake.
+                Meta = new Token {
+                    AuthenticationToken = "must-not-leak",
+                    TwoFactorChallenge = "handle-1",
+                    TwoFactorExpiresAt = expires,
+                    TwoFactorMethods = [new TwoFactorMethodInfo("authenticator", false), new TwoFactorMethodInfo("sms", true)]
+                }
+            });
+
+        var response = await SendJson(login, host.Endpoints.ServiceProvider, "{\"UserName\":\"alice\",\"Password\":\"password\"}");
+
+        Assert.Equal(StatusCodes.Status202Accepted, response.Status);
+        using var json = System.Text.Json.JsonDocument.Parse(response.Body);
+        var root = json.RootElement;
+        Assert.True(root.GetProperty("requiresTwoFactor").GetBoolean());
+        Assert.Equal("handle-1", root.GetProperty("twoFactorChallenge").GetString());
+        Assert.Equal(expires, root.GetProperty("expiresAt").GetDateTimeOffset());
+        var methods = root.GetProperty("methods").EnumerateArray().ToArray();
+        Assert.Equal(2, methods.Length);
+        Assert.Equal("authenticator", methods[0].GetProperty("name").GetString());
+        Assert.False(methods[0].GetProperty("requiresSend").GetBoolean());
+        Assert.True(methods[1].GetProperty("requiresSend").GetBoolean());
+        Assert.DoesNotContain("must-not-leak", response.Body);
+        Assert.DoesNotContain("authenticationToken", response.Body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Login_TwoFactorRequired_WithoutTwoFactorFeature_KeepsTheOriginalBody() {
+        using var host = CreateHost(includeVerificationDependencies: false);
+        host.Endpoints.MapAuthenticationApi<IdentityUser<int>, TestUserDto, int>();
+        var login = Endpoints(host).OfType<RouteEndpoint>().Single();
+        Mock.Get(host.Endpoints.ServiceProvider.GetRequiredService<IUserAccountService<IdentityUser<int>>>())
+            .Setup(service => service.LoginAsync("alice", "password", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Result<IdentityUser<int>, Token>(ResultCode.Accepted, Result.CreateErrors("TwoFactorRequired", "A second authentication step is required.")));
+
+        var response = await SendJson(login, host.Endpoints.ServiceProvider, "{\"UserName\":\"alice\",\"Password\":\"password\"}");
+
+        Assert.Equal(StatusCodes.Status202Accepted, response.Status);
+        Assert.Equal("{\"requiresTwoFactor\":true}", response.Body);
+    }
+
+    [Fact]
+    public async Task Login_EmptyChallengeInMeta_IsTreatedAsNoChallenge() {
+        using var host = CreateHost(includeVerificationDependencies: false);
+        host.Endpoints.MapAuthenticationApi<IdentityUser<int>, TestUserDto, int>();
+        var login = Endpoints(host).OfType<RouteEndpoint>().Single();
+        Mock.Get(host.Endpoints.ServiceProvider.GetRequiredService<IUserAccountService<IdentityUser<int>>>())
+            .Setup(service => service.LoginAsync("alice", "password", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Result<IdentityUser<int>, Token>(ResultCode.Accepted, Result.CreateErrors("TwoFactorRequired", "x")) {
+                Meta = new Token { TwoFactorChallenge = "" }
+            });
+
+        var response = await SendJson(login, host.Endpoints.ServiceProvider, "{\"UserName\":\"alice\",\"Password\":\"password\"}");
+
+        Assert.Equal("{\"requiresTwoFactor\":true}", response.Body);
+    }
+
+    [Fact]
     public void RegistrationMapping_IsIndependentAndAnonymous() {
         using var host = CreateHost(includeVerificationDependencies: true);
 
@@ -139,6 +206,22 @@ public sealed class FeatureEndpointMappingTest {
         Assert.Contains("IVerificationWorkflowService", error.Message, StringComparison.Ordinal);
         Assert.Contains("IVerificationRequestStore", error.Message, StringComparison.Ordinal);
         Assert.Contains("IVerificationSender", error.Message, StringComparison.Ordinal);
+    }
+
+    private static async Task<(int Status, string Body)> SendJson(RouteEndpoint endpoint, IServiceProvider services, string json, Action<HttpContext> configure = null) {
+        var context = new DefaultHttpContext { RequestServices = services };
+        context.Request.Method = "POST";
+        context.Request.ContentType = "application/json";
+        var bytes = Encoding.UTF8.GetBytes(json);
+        context.Request.Body = new MemoryStream(bytes);
+        context.Request.ContentLength = bytes.Length;
+        context.Features.Set<IHttpRequestBodyDetectionFeature>(new TestBodyDetectionFeature());
+        configure?.Invoke(context);
+        await using var response = new MemoryStream();
+        context.Response.Body = response;
+        await endpoint.RequestDelegate!(context);
+        response.Position = 0;
+        return (context.Response.StatusCode, await new StreamReader(response).ReadToEndAsync());
     }
 
     private static TestHost CreateHost(bool includeVerificationDependencies, bool includeExternalProvider = false) {

@@ -35,7 +35,7 @@ namespace RuntimeApps.Authentication.Endpoints.Account {
                 if(!result.Succeeded) {
                     // Keep the existing two-factor continuation response separate from credential failures.
                     if(result.Code == ResultCode.Accepted)
-                        return TypedResults.Accepted((string)null, new AuthenticationContinuationResponse());
+                        return TypedResults.Accepted((string)null, CreateContinuation(result.Meta));
                     // Keep unknown, unconfirmed, locked, and incorrect-password failures indistinguishable.
                     return TypedResults.Problem(statusCode: StatusCodes.Status401Unauthorized,
                         title: "Authentication failed", detail: "The username or password is incorrect.",
@@ -65,6 +65,16 @@ namespace RuntimeApps.Authentication.Endpoints.Account {
 
             return endpoints;
         }
+
+        /// <summary>Copies only the challenge fields. Tokens in <paramref name="meta"/> are never exposed here.</summary>
+        private static AuthenticationContinuationResponse CreateContinuation(Token meta) =>
+            string.IsNullOrEmpty(meta?.TwoFactorChallenge)
+                ? new AuthenticationContinuationResponse()
+                : new AuthenticationContinuationResponse {
+                    TwoFactorChallenge = meta.TwoFactorChallenge,
+                    ExpiresAt = meta.TwoFactorExpiresAt,
+                    Methods = meta.TwoFactorMethods ?? []
+                };
 
         /// <summary>Maps the user-registration endpoint.</summary>
         public static IEndpointRouteBuilder MapRegistrationApi<TUser, TUserDto, TKey>(this IEndpointRouteBuilder endpoints)
