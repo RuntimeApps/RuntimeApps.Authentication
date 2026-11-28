@@ -6,6 +6,7 @@ using RuntimeApps.Authentication.Features.TwoFactor.Models;
 using RuntimeApps.Authentication.Features.TwoFactor.Services;
 using RuntimeApps.Authentication.Features.Verification.Services;
 using RuntimeApps.Authentication.Identity.Contracts;
+using RuntimeApps.Authentication.Shared.Models;
 
 namespace RuntimeApps.Authentication.Test;
 
