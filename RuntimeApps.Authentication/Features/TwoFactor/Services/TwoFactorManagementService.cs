@@ -37,6 +37,8 @@ public class TwoFactorManagementService<TUser, TKey>(
         if(selected == null)
             return Failure<TwoFactorEnrollmentInfo>(ResultCode.BadRequest, "InvalidTwoFactorMethod", "The two-factor method is not available.");
 
+        if(await lockoutManager.IsLockedOutAsync(user))
+            return Failure<TwoFactorEnrollmentInfo>(ResultCode.Locked, "AccountLocked", "The account is temporarily locked.");
         if(!await reauthenticator.IsReauthenticatedAsync(user, request, cancellationToken))
             return Failure<TwoFactorEnrollmentInfo>(ResultCode.Forbidden, "ReauthenticationRequired", "Re-authentication is required to set up two-factor authentication.");
 
@@ -72,6 +74,38 @@ public class TwoFactorManagementService<TUser, TKey>(
         var enabled = await twoFactorManager.SetTwoFactorEnabledAsync(user, true);
         if(!enabled.Succeeded)
             throw new InvalidOperationException("Two-factor authentication could not be enabled.");
+        return new Result<TwoFactorStatus>(await GetStatusAsync(user, cancellationToken));
+    }
+
+    /// <remarks>
+    /// The flag is turned off before any method clears its data: if clearing fails the account is merely left with an
+    /// unused secret (setup rotates it), whereas clearing first could leave two-factor on with a secret nobody has.
+    /// </remarks>
+    public virtual async Task<Result<TwoFactorStatus>> DisableAsync(TUser user, TwoFactorDisableModel request, CancellationToken cancellationToken = default) {
+        ArgumentNullException.ThrowIfNull(user);
+        cancellationToken.ThrowIfCancellationRequested();
+        if(request == null)
+            return Failure<TwoFactorStatus>(ResultCode.BadRequest, "InvalidTwoFactorRequest", "A method and a code are required.");
+        var selected = FindMethod(request.Method);
+        if(selected == null)
+            return Failure<TwoFactorStatus>(ResultCode.BadRequest, "InvalidTwoFactorMethod", "The two-factor method is not available.");
+        if(await lockoutManager.IsLockedOutAsync(user))
+            return Failure<TwoFactorStatus>(ResultCode.Locked, "AccountLocked", "The account is temporarily locked.");
+        if(!await reauthenticator.IsReauthenticatedAsync(user, request, cancellationToken))
+            return Failure<TwoFactorStatus>(ResultCode.Forbidden, "ReauthenticationRequired", "Re-authentication is required to disable two-factor authentication.");
+        if(!await twoFactorManager.GetTwoFactorEnabledAsync(user))
+            return Failure<TwoFactorStatus>(ResultCode.Conflict, "TwoFactorNotEnabled", "Two-factor authentication is not enabled.");
+
+        // The code must come from a method the user can really answer with.
+        if(!await selected.IsEnrolledAsync(user, cancellationToken) ||
+           !await AcceptCodeAsync(user, selected, request.Code, confirmEnrollment: false, cancellationToken))
+            return Failure<TwoFactorStatus>(ResultCode.Forbidden, "InvalidCode", "The code is incorrect or has already been used.");
+
+        var disabled = await twoFactorManager.SetTwoFactorEnabledAsync(user, false);
+        if(!disabled.Succeeded)
+            throw new InvalidOperationException("Two-factor authentication could not be disabled.");
+        foreach(var method in methods)
+            await method.ClearEnrollmentAsync(user, cancellationToken);
         return new Result<TwoFactorStatus>(await GetStatusAsync(user, cancellationToken));
     }
 

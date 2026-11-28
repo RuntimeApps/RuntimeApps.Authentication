@@ -27,4 +27,13 @@ public interface ITwoFactorManagementService<TUser> where TUser : class {
     /// Failures: BadRequest (unknown method, incorrect code), Conflict (already enabled), Locked (account locked out).
     /// </summary>
     Task<Result<TwoFactorStatus>> ConfirmSetupAsync(TUser user, string method, string code, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Turns two-factor off. Needs fresh re-authentication and a current code from an enrolled method, so a stolen
+    /// session or a leaked password alone cannot remove the second factor. The code goes into the used-code ledger,
+    /// wrong or replayed codes count toward lockout, and every method clears its stored enrollment (the authenticator
+    /// key is rotated). Failures: BadRequest (unknown method), Forbidden (re-authentication failed, incorrect code or
+    /// method not enrolled), Conflict (not enabled), Locked (account locked out).
+    /// </summary>
+    Task<Result<TwoFactorStatus>> DisableAsync(TUser user, TwoFactorDisableModel request, CancellationToken cancellationToken = default);
 }
