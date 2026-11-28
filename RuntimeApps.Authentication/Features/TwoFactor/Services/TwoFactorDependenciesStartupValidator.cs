@@ -10,7 +10,8 @@ namespace RuntimeApps.Authentication.Features.TwoFactor.Services;
 /// misconfigured application cannot start and silently skip or break the second step.
 /// </summary>
 internal sealed class TwoFactorDependenciesStartupValidator<TUser, TKey>(IServiceProviderIsService availability, IServiceScopeFactory scopeFactory) : IHostedService
-    where TUser : class {
+    where TUser : class
+    where TKey : IEquatable<TKey> {
     public Task StartAsync(CancellationToken cancellationToken) {
         if(!availability.IsService(typeof(ITwoFactorChallengeStore<TKey>)))
             throw new InvalidOperationException(
