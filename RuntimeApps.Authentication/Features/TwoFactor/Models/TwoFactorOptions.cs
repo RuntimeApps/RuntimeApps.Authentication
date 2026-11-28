@@ -37,6 +37,12 @@ public sealed class TwoFactorOptions {
     /// </summary>
     public TwoFactorNoMethodBehavior NoEnrolledMethodBehavior { get; set; } = TwoFactorNoMethodBehavior.RequireTwoFactor;
 
+    /// <summary>
+    /// Whether an external-provider login also requires the local second factor for users who have it enabled.
+    /// The default, <see cref="TwoFactorExternalLoginPolicy.RequireWhenEnabled"/>, requires it.
+    /// </summary>
+    public TwoFactorExternalLoginPolicy ExternalLoginPolicy { get; set; } = TwoFactorExternalLoginPolicy.RequireWhenEnabled;
+
     /// <summary>Second-factor completion requests accepted per minute from one client IP address. Default 10.</summary>
     public int CompleteRequestsPerMinute { get; set; } = 10;
 
@@ -55,6 +61,8 @@ public sealed class TwoFactorOptions {
             throw new InvalidOperationException("The two-factor cleanup retention must be between zero and 30 days.");
         if(!Enum.IsDefined(NoEnrolledMethodBehavior))
             throw new InvalidOperationException("The behavior for users without an enrolled two-factor method is not a valid value.");
+        if(!Enum.IsDefined(ExternalLoginPolicy))
+            throw new InvalidOperationException("The two-factor policy for external logins is not a valid value.");
         if(CompleteRequestsPerMinute is < 1 or > 1000)
             throw new InvalidOperationException("The two-factor completion request limit must be between 1 and 1000 per minute.");
         if(CleanupBatchSize is < 1 or > 10000)

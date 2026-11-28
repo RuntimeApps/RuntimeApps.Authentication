@@ -53,4 +53,36 @@ public class TwoFactorLoginOptionsTest {
         Assert.Equal(TwoFactorNoMethodBehavior.AllowSignIn, options.NoEnrolledMethodBehavior);
         Assert.Equal(25, options.CompleteRequestsPerMinute);
     }
+
+    [Fact]
+    public void ExternalLoginPolicy_DefaultsToRequireWhenEnabled() {
+        var options = new TwoFactorOptions { Issuer = "Acme" };
+
+        options.Validate();
+
+        Assert.Equal(TwoFactorExternalLoginPolicy.RequireWhenEnabled, options.ExternalLoginPolicy);
+    }
+
+    [Theory]
+    [InlineData(TwoFactorExternalLoginPolicy.RequireWhenEnabled)]
+    [InlineData(TwoFactorExternalLoginPolicy.TrustProvider)]
+    public void ExternalLoginPolicy_AcceptsDefinedValues(TwoFactorExternalLoginPolicy policy) =>
+        new TwoFactorOptions { Issuer = "Acme", ExternalLoginPolicy = policy }.Validate();
+
+    [Fact]
+    public void ExternalLoginPolicy_RejectsUndefinedValue() =>
+        Assert.Throws<InvalidOperationException>(() =>
+            new TwoFactorOptions { Issuer = "Acme", ExternalLoginPolicy = (TwoFactorExternalLoginPolicy)42 }.Validate());
+
+    [Fact]
+    public void ExternalLoginPolicy_BindsFromConfiguration() {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> {
+            ["ExternalLoginPolicy"] = "TrustProvider"
+        }).Build();
+        var options = new TwoFactorOptions { Issuer = "Acme" };
+
+        configuration.Bind(options);
+
+        Assert.Equal(TwoFactorExternalLoginPolicy.TrustProvider, options.ExternalLoginPolicy);
+    }
 }
