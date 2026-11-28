@@ -15,6 +15,15 @@ public sealed class FakeTwoFactorMethod(string name, bool deliveryBased = false)
     public Exception BeginException { get; set; }
     public int BeginCalls { get; private set; }
     public int ClearCalls { get; private set; }
+    public Action OnClear { get; set; }
+    /// <summary>When true, NormalizeCode strips spaces and hyphens like the real authenticator method.</summary>
+    public bool NormalizeAsDigits { get; set; }
+
+    public string NormalizeCode(string code) {
+        if(string.IsNullOrWhiteSpace(code) || code.Length > 64) return null;
+        var normalized = string.Concat(code.Where(c => !char.IsWhiteSpace(c) && !(NormalizeAsDigits && c == '-')));
+        return normalized.Length == 0 || normalized.Length > 32 ? null : normalized;
+    }
 
     public Task<bool> IsEnrolledAsync(IdentityUser<int> user, CancellationToken cancellationToken) => Task.FromResult(Enrolled);
 
@@ -26,11 +35,16 @@ public sealed class FakeTwoFactorMethod(string name, bool deliveryBased = false)
 
     public Task ClearEnrollmentAsync(IdentityUser<int> user, CancellationToken cancellationToken) {
         ClearCalls++;
+        OnClear?.Invoke();
         return Task.CompletedTask;
     }
 
-    public Task<bool> ConfirmEnrollmentAsync(IdentityUser<int> user, string code, CancellationToken cancellationToken) =>
-        Task.FromResult(code == ValidCode);
+    public int ConfirmCalls { get; private set; }
+
+    public Task<bool> ConfirmEnrollmentAsync(IdentityUser<int> user, string code, CancellationToken cancellationToken) {
+        ConfirmCalls++;
+        return Task.FromResult(code == ValidCode);
+    }
 
     public Task SendChallengeAsync(IdentityUser<int> user, CancellationToken cancellationToken) => Task.CompletedTask;
 

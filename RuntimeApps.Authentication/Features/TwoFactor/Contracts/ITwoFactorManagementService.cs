@@ -19,4 +19,12 @@ public interface ITwoFactorManagementService<TUser> where TUser : class {
     /// Failures: BadRequest (unknown method), Forbidden (re-authentication failed), Conflict (already enabled).
     /// </summary>
     Task<Result<TwoFactorEnrollmentInfo>> BeginSetupAsync(TUser user, string method, TwoFactorReauthenticationModel request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Confirms a started setup with a code from the new method and turns two-factor on. The code is recorded in the
+    /// used-code ledger, so it cannot be replayed. Wrong or replayed codes count toward Identity lockout. Every other
+    /// method's stored enrollment is cleared first, so an abandoned setup cannot count as enrolled.
+    /// Failures: BadRequest (unknown method, incorrect code), Conflict (already enabled), Locked (account locked out).
+    /// </summary>
+    Task<Result<TwoFactorStatus>> ConfirmSetupAsync(TUser user, string method, string code, CancellationToken cancellationToken = default);
 }

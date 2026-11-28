@@ -1,3 +1,5 @@
+using System.Globalization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 using RuntimeApps.Authentication.Features.TwoFactor.Contracts;
 using RuntimeApps.Authentication.Features.TwoFactor.Models;
@@ -14,7 +16,7 @@ public class TwoFactorManagementService<TUser, TKey>(
     ITwoFactorChallengeStore<TKey> challengeStore,
     IOptions<TwoFactorOptions> options,
     TimeProvider timeProvider) : ITwoFactorManagementService<TUser>
-    where TUser : class
+    where TUser : IdentityUser<TKey>
     where TKey : IEquatable<TKey> {
     public virtual async Task<TwoFactorStatus> GetStatusAsync(TUser user, CancellationToken cancellationToken = default) {
         ArgumentNullException.ThrowIfNull(user);
@@ -44,6 +46,62 @@ public class TwoFactorManagementService<TUser, TKey>(
 
         cancellationToken.ThrowIfCancellationRequested();
         return new Result<TwoFactorEnrollmentInfo>(await selected.BeginEnrollmentAsync(user, cancellationToken));
+    }
+
+    /// <remarks>
+    /// Order: the code is checked first, then recorded as used, and only then is anything changed. Clearing the other
+    /// methods happens before the flag is turned on, so there is never a moment with the flag on and a stale secret.
+    /// </remarks>
+    public virtual async Task<Result<TwoFactorStatus>> ConfirmSetupAsync(TUser user, string method, string code, CancellationToken cancellationToken = default) {
+        ArgumentNullException.ThrowIfNull(user);
+        cancellationToken.ThrowIfCancellationRequested();
+        var selected = FindMethod(method);
+        if(selected == null)
+            return Failure<TwoFactorStatus>(ResultCode.BadRequest, "InvalidTwoFactorMethod", "The two-factor method is not available.");
+        if(await lockoutManager.IsLockedOutAsync(user))
+            return Failure<TwoFactorStatus>(ResultCode.Locked, "AccountLocked", "The account is temporarily locked.");
+        if(await twoFactorManager.GetTwoFactorEnabledAsync(user))
+            return Failure<TwoFactorStatus>(ResultCode.Conflict, "TwoFactorAlreadyEnabled", "Two-factor authentication is already enabled.");
+
+        if(!await AcceptCodeAsync(user, selected, code, confirmEnrollment: true, cancellationToken))
+            return Failure<TwoFactorStatus>(ResultCode.BadRequest, "InvalidCode", "The code is incorrect or has already been used.");
+
+        // Two-factor was off, so no other method is enrolled and anything they stored is an unconfirmed leftover.
+        foreach(var other in methods.Where(item => !ReferenceEquals(item, selected)))
+            await other.ClearEnrollmentAsync(user, cancellationToken);
+        var enabled = await twoFactorManager.SetTwoFactorEnabledAsync(user, true);
+        if(!enabled.Succeeded)
+            throw new InvalidOperationException("Two-factor authentication could not be enabled.");
+        return new Result<TwoFactorStatus>(await GetStatusAsync(user, cancellationToken));
+    }
+
+    /// <summary>
+    /// Validates a submitted code for <paramref name="selected"/> and records it as used. Wrong, malformed-but-verified
+    /// and replayed codes count toward lockout. Returns false for any rejected code.
+    /// </summary>
+    protected async Task<bool> AcceptCodeAsync(TUser user, ITwoFactorMethod<TUser> selected, string code, bool confirmEnrollment, CancellationToken cancellationToken) {
+        var normalized = string.IsNullOrWhiteSpace(code) ? null : selected.NormalizeCode(code);
+        if(normalized == null)
+            return false;
+
+        var valid = confirmEnrollment
+            ? await selected.ConfirmEnrollmentAsync(user, normalized, cancellationToken)
+            : await selected.VerifyAsync(user, normalized, cancellationToken);
+        if(!valid) {
+            await lockoutManager.AccessFailedAsync(user);
+            return false;
+        }
+
+        // Nothing is recorded yet, so honoring cancellation here cannot burn a valid code.
+        cancellationToken.ThrowIfCancellationRequested();
+        var now = timeProvider.GetUtcNow();
+        var hash = TwoFactorCodeHash.Compute(Convert.ToString(user.Id, CultureInfo.InvariantCulture), selected.Name, normalized);
+        if(!await challengeStore.TryMarkCodeUsedAsync(user.Id, selected.Name, hash, now, now + options.Value.UsedCodeRetention, cancellationToken)) {
+            // A correct code that was already accepted is a replay, so it counts like a wrong code.
+            await lockoutManager.AccessFailedAsync(user);
+            return false;
+        }
+        return true;
     }
 
     protected ITwoFactorMethod<TUser> FindMethod(string name) =>
