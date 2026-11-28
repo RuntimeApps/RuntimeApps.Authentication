@@ -16,19 +16,19 @@ namespace RuntimeApps.Authentication.Test;
 
 /// <summary>The whole two-factor service graph resolved from a real container with real Identity and EF stores.</summary>
 public class TwoFactorServiceGraphTest {
-    private static async Task<(ServiceProvider Provider, SqliteConnection Connection)> BuildAsync(Action<IServiceCollection> configure = null) {
+    private static async Task<(ServiceProvider Provider, SqliteConnection Connection)> BuildAsync(Action<IServiceCollection> beforeTwoFactor = null) {
         var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync(TestContext.Current.CancellationToken);
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddDbContext<GraphDbContext>(o => o.UseSqlite(connection));
         services.AddScoped(_ => Mock.Of<IAuthenticationSessionIssuer<IdentityUser<int>>>());
+        beforeTwoFactor?.Invoke(services);
         services.AddAuthentication()
             .AddRuntimeAppsAuthentication<IdentityUser<int>, IdentityRole<int>, int>()
             .AddEfStores<GraphDbContext, IdentityUser<int>, IdentityRole<int>, int>()
             .AddTwoFactor(o => o.Issuer = "Acme");
         services.AddTwoFactorChallengeStore<GraphDbContext, int>();
-        configure?.Invoke(services);
         return (services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = false }), connection);
     }
 

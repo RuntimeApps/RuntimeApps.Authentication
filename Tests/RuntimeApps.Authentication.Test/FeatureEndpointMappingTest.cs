@@ -237,6 +237,123 @@ public sealed class FeatureEndpointMappingTest {
         Assert.Contains("verify-handle", response.Body);
     }
 
+    private static RouteEndpoint MapManagementEndpoint(TestHost host, string suffix, string httpMethod) {
+        host.Endpoints.MapAccountManagementApi<IdentityUser<int>, TestUserDto, int>();
+        return Endpoints(host).OfType<RouteEndpoint>().Single(e =>
+            e.RoutePattern.RawText != null && e.RoutePattern.RawText.EndsWith(suffix, StringComparison.Ordinal) &&
+            e.Metadata.GetMetadata<Microsoft.AspNetCore.Routing.HttpMethodMetadata>()?.HttpMethods.Contains(httpMethod) == true);
+    }
+
+    private static Mock<ITwoFactorManagementService<IdentityUser<int>>> ManagementService(TestHost host) =>
+        Mock.Get(host.Endpoints.ServiceProvider.GetRequiredService<ITwoFactorManagementService<IdentityUser<int>>>());
+
+    private static Mock<ITwoFactorRequestLimiter> Limiter(TestHost host) =>
+        Mock.Get(host.Endpoints.ServiceProvider.GetRequiredService<ITwoFactorRequestLimiter>());
+
+    private const string ReauthBody = "{\"CurrentPassword\":\"password\"}";
+
+    private static Action<HttpContext> Route(string method, string httpMethod = "POST") => context => {
+        context.Request.Method = httpMethod;
+        if(method != null) context.Request.RouteValues["method"] = method;
+    };
+
+    [Fact]
+    public void TwoFactorManagement_IsNotMappedWithoutTheFeature() {
+        using var host = CreateHost(includeVerificationDependencies: false);
+        host.Endpoints.MapAccountManagementApi<IdentityUser<int>, TestUserDto, int>();
+
+        Assert.DoesNotContain(Endpoints(host).OfType<RouteEndpoint>(), e => e.RoutePattern.RawText?.Contains("two-factor", StringComparison.Ordinal) == true);
+    }
+
+    [Fact]
+    public void TwoFactorManagement_EndpointsRequireAuthorizationAndDeclareTheirResponses() {
+        using var host = CreateHost(includeVerificationDependencies: false, includeTwoFactorManagement: true);
+
+        var status = MapManagementEndpoint(host, "two-factor", "GET");
+        var setup = MapManagementEndpoint(host, "two-factor/methods/{method}/setup", "POST");
+
+        Assert.NotEmpty(status.Metadata.GetOrderedMetadata<Microsoft.AspNetCore.Authorization.IAuthorizeData>());
+        Assert.NotEmpty(setup.Metadata.GetOrderedMetadata<Microsoft.AspNetCore.Authorization.IAuthorizeData>());
+        var codes = setup.Metadata.GetOrderedMetadata<Microsoft.AspNetCore.Http.Metadata.IProducesResponseTypeMetadata>().Select(m => m.StatusCode).ToArray();
+        foreach(var expected in new[] { 200, 400, 401, 403, 409, 423, 429 })
+            Assert.Contains(expected, codes);
+    }
+
+    [Fact]
+    public async Task TwoFactorStatus_ReturnsTheStatusWithoutSecrets() {
+        using var host = CreateHost(includeVerificationDependencies: false, includeTwoFactorManagement: true);
+        var endpoint = MapManagementEndpoint(host, "two-factor", "GET");
+        ManagementService(host).Setup(s => s.GetStatusAsync(It.IsAny<IdentityUser<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TwoFactorStatus(true, [new TwoFactorMethodStatus("authenticator", false, true)]));
+
+        var response = await SendJson(endpoint, host.Endpoints.ServiceProvider, "", Route(null, "GET"));
+
+        Assert.Equal(StatusCodes.Status200OK, response.Status);
+        using var json = System.Text.Json.JsonDocument.Parse(response.Body);
+        Assert.True(json.RootElement.GetProperty("enabled").GetBoolean());
+        var method = json.RootElement.GetProperty("methods")[0];
+        Assert.Equal("authenticator", method.GetProperty("name").GetString());
+        Assert.True(method.GetProperty("enrolled").GetBoolean());
+    }
+
+    [Fact]
+    public async Task TwoFactorSetup_Success_Returns200WithNoStoreHeaders() {
+        using var host = CreateHost(includeVerificationDependencies: false, includeTwoFactorManagement: true);
+        var endpoint = MapManagementEndpoint(host, "two-factor/methods/{method}/setup", "POST");
+        ManagementService(host).Setup(s => s.BeginSetupAsync(It.IsAny<IdentityUser<int>>(), "authenticator", It.IsAny<TwoFactorReauthenticationModel>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Result<TwoFactorEnrollmentInfo>(new TwoFactorEnrollmentInfo("authenticator", new Dictionary<string, string> { ["sharedKey"] = "ABCD EFGH" })));
+        HttpContext captured = null;
+
+        var response = await SendJson(endpoint, host.Endpoints.ServiceProvider, ReauthBody, context => { Route("authenticator")(context); captured = context; });
+
+        Assert.Equal(StatusCodes.Status200OK, response.Status);
+        Assert.Contains("ABCD EFGH", response.Body);
+        Assert.Equal("no-store", captured.Response.Headers.CacheControl.ToString());
+        Assert.Equal("no-cache", captured.Response.Headers.Pragma.ToString());
+    }
+
+    [Theory]
+    [InlineData(ResultCode.BadRequest, StatusCodes.Status400BadRequest)]
+    [InlineData(ResultCode.Forbidden, StatusCodes.Status403Forbidden)]
+    [InlineData(ResultCode.Conflict, StatusCodes.Status409Conflict)]
+    [InlineData(ResultCode.Locked, StatusCodes.Status423Locked)]
+    public async Task TwoFactorSetup_Failures_MapToTheirStatusWithoutSecrets(ResultCode code, int status) {
+        using var host = CreateHost(includeVerificationDependencies: false, includeTwoFactorManagement: true);
+        var endpoint = MapManagementEndpoint(host, "two-factor/methods/{method}/setup", "POST");
+        ManagementService(host).Setup(s => s.BeginSetupAsync(It.IsAny<IdentityUser<int>>(), It.IsAny<string>(), It.IsAny<TwoFactorReauthenticationModel>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Result<TwoFactorEnrollmentInfo>(code, Result.CreateErrors("SomeCode", "Some description.")));
+
+        var response = await SendJson(endpoint, host.Endpoints.ServiceProvider, ReauthBody, Route("authenticator"));
+
+        Assert.Equal(status, response.Status);
+        Assert.DoesNotContain("sharedKey", response.Body);
+    }
+
+    [Fact]
+    public async Task TwoFactorSetup_WhenThrottled_Returns429BeforeAnyWork() {
+        using var host = CreateHost(includeVerificationDependencies: false, includeTwoFactorManagement: true);
+        var endpoint = MapManagementEndpoint(host, "two-factor/methods/{method}/setup", "POST");
+        Limiter(host).Setup(l => l.IsAllowedAsync(It.IsAny<HttpContext>(), It.IsAny<CancellationToken>())).Returns(new ValueTask<bool>(false));
+
+        var response = await SendJson(endpoint, host.Endpoints.ServiceProvider, ReauthBody, Route("authenticator"));
+
+        Assert.Equal(StatusCodes.Status429TooManyRequests, response.Status);
+        ManagementService(host).Verify(s => s.BeginSetupAsync(It.IsAny<IdentityUser<int>>(), It.IsAny<string>(), It.IsAny<TwoFactorReauthenticationModel>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task TwoFactorSetup_WithoutAUser_Returns401() {
+        using var host = CreateHost(includeVerificationDependencies: false, includeTwoFactorManagement: true);
+        var endpoint = MapManagementEndpoint(host, "two-factor/methods/{method}/setup", "POST");
+        Mock.Get(host.Endpoints.ServiceProvider.GetRequiredService<IUserManager<IdentityUser<int>>>())
+            .Setup(m => m.GetUserAsync(It.IsAny<System.Security.Claims.ClaimsPrincipal>())).ReturnsAsync((IdentityUser<int>)null);
+
+        var response = await SendJson(endpoint, host.Endpoints.ServiceProvider, ReauthBody, Route("authenticator"));
+
+        Assert.Equal(StatusCodes.Status401Unauthorized, response.Status);
+        ManagementService(host).Verify(s => s.BeginSetupAsync(It.IsAny<IdentityUser<int>>(), It.IsAny<string>(), It.IsAny<TwoFactorReauthenticationModel>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     private static RouteEndpoint MapTwoFactor(TestHost host) {
         host.Endpoints.MapAuthenticationApi<IdentityUser<int>, TestUserDto, int>();
         return Endpoints(host).OfType<RouteEndpoint>().Single(e => e.RoutePattern.RawText != null && e.RoutePattern.RawText.EndsWith("login/two-factor", StringComparison.Ordinal));
@@ -411,7 +528,7 @@ public sealed class FeatureEndpointMappingTest {
         return (context.Response.StatusCode, await new StreamReader(response).ReadToEndAsync());
     }
 
-    private static TestHost CreateHost(bool includeVerificationDependencies, bool includeExternalProvider = false, bool includeTwoFactor = false) {
+    private static TestHost CreateHost(bool includeVerificationDependencies, bool includeExternalProvider = false, bool includeTwoFactor = false, bool includeTwoFactorManagement = false) {
         var services = new ServiceCollection();
         services.AddLogging().AddProblemDetails();
         services.AddSingleton(Mock.Of<IRegistrationService<IdentityUser<int>, int>>());
@@ -419,8 +536,17 @@ public sealed class FeatureEndpointMappingTest {
         services.AddSingleton(Mock.Of<IUserMapper<IdentityUser<int>, TestUserDto>>());
         if(includeExternalProvider)
             services.AddSingleton<IExternalLoginProvider<IdentityUser<int>>>(Mock.Of<IExternalLoginProvider<IdentityUser<int>>>());
-        if(includeTwoFactor) {
-            services.AddSingleton(Mock.Of<ITwoFactorLoginService<IdentityUser<int>>>());
+        if(includeTwoFactorManagement) {
+            var users = new Mock<IUserManager<IdentityUser<int>>>();
+            users.Setup(m => m.GetUserAsync(It.IsAny<System.Security.Claims.ClaimsPrincipal>())).ReturnsAsync(new IdentityUser<int> { Id = 7, UserName = "alice" });
+            services.AddSingleton(users);
+            services.AddSingleton(users.Object);
+            services.AddSingleton(Mock.Of<IUserPasswordManager<IdentityUser<int>>>());
+            services.AddSingleton(Mock.Of<ITwoFactorManagementService<IdentityUser<int>>>());
+        }
+        if(includeTwoFactor || includeTwoFactorManagement) {
+            if(includeTwoFactor)
+                services.AddSingleton(Mock.Of<ITwoFactorLoginService<IdentityUser<int>>>());
             var limiter = new Mock<ITwoFactorRequestLimiter>();
             limiter.Setup(l => l.IsAllowedAsync(It.IsAny<HttpContext>(), It.IsAny<CancellationToken>())).Returns(new ValueTask<bool>(true));
             services.AddSingleton(limiter);

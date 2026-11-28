@@ -351,6 +351,48 @@ namespace RuntimeApps.Authentication.Endpoints.Account {
                   .Produces(StatusCodes.Status409Conflict);
             }
 
+            // Two-factor management is offered only when AddTwoFactor is registered.
+            if(endpoints.ServiceProvider.GetService<IServiceProviderIsService>()
+                ?.IsService(typeof(ITwoFactorManagementService<TUser>)) == true) {
+                authorizedRouteGroup.MapGet("two-factor", async Task<IResult> (IUserManager<TUser> userManager, ITwoFactorManagementService<TUser> twoFactor, HttpContext httpContext, CancellationToken cancellationToken) => {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var user = await userManager.GetUserAsync(httpContext.User);
+                    if(user == null)
+                        return TypedResults.Unauthorized();
+
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return TypedResults.Ok(await twoFactor.GetStatusAsync(user, cancellationToken));
+                }).WithName("AccountManagement_GetTwoFactor").WithTags("Account management").WithSummary("Get the two-factor status of the current account")
+                  .Produces<TwoFactorStatus>(StatusCodes.Status200OK)
+                  .Produces(StatusCodes.Status401Unauthorized)
+                  .Produces(StatusCodes.Status403Forbidden);
+
+                authorizedRouteGroup.MapPost("two-factor/methods/{method}/setup", async Task<IResult> (string method, [FromBody] TwoFactorReauthenticationModel request, IUserManager<TUser> userManager, ITwoFactorManagementService<TUser> twoFactor, ITwoFactorRequestLimiter requestLimiter, HttpContext httpContext, CancellationToken cancellationToken) => {
+                    if(!await requestLimiter.IsAllowedAsync(httpContext, cancellationToken))
+                        return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var user = await userManager.GetUserAsync(httpContext.User);
+                    if(user == null)
+                        return TypedResults.Unauthorized();
+
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var result = await twoFactor.BeginSetupAsync(user, method, request, cancellationToken);
+                    if(!result.Succeeded)
+                        return result.CreatePublicError();
+                    // The response carries the shared secret, so it must never be stored by a cache or proxy.
+                    httpContext.Response.Headers.CacheControl = "no-store";
+                    httpContext.Response.Headers.Pragma = "no-cache";
+                    return TypedResults.Ok(result.Data);
+                }).WithName("AccountManagement_SetUpTwoFactor").WithTags("Account management").WithSummary("Start two-factor setup for a method after re-authentication")
+                  .Produces<TwoFactorEnrollmentInfo>(StatusCodes.Status200OK)
+                  .ProducesValidationProblem(StatusCodes.Status400BadRequest)
+                  .Produces(StatusCodes.Status401Unauthorized)
+                  .Produces(StatusCodes.Status403Forbidden)
+                  .Produces(StatusCodes.Status409Conflict)
+                  .Produces(StatusCodes.Status423Locked)
+                  .Produces(StatusCodes.Status429TooManyRequests);
+            }
+
             return endpoints;
         }
 
