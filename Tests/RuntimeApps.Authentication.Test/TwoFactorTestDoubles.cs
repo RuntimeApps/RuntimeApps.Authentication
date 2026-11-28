@@ -12,12 +12,14 @@ public sealed class FakeTwoFactorMethod(string name, bool deliveryBased = false)
     public string ValidCode { get; set; } = "111111";
     public int VerifyCalls { get; private set; }
     public Exception VerifyException { get; set; }
+    public Exception BeginException { get; set; }
     public int BeginCalls { get; private set; }
     public int ClearCalls { get; private set; }
 
     public Task<bool> IsEnrolledAsync(IdentityUser<int> user, CancellationToken cancellationToken) => Task.FromResult(Enrolled);
 
     public Task<TwoFactorEnrollmentInfo> BeginEnrollmentAsync(IdentityUser<int> user, CancellationToken cancellationToken) {
+        if(BeginException != null) throw BeginException;
         BeginCalls++;
         return Task.FromResult(new TwoFactorEnrollmentInfo(name, new Dictionary<string, string> { ["sharedKey"] = "SECRET-KEY" }));
     }
