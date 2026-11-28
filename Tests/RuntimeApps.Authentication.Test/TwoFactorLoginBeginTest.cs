@@ -31,7 +31,8 @@ public class TwoFactorLoginBeginTest {
                     Mock.Of<IUserLockoutManager<IdentityUser<int>>>(), Mock.Of<IUserLoginManager<IdentityUser<int>>>(),
                     Mock.Of<ISignInManager<IdentityUser<int>>>(),
                     Microsoft.Extensions.Options.Options.Create(new RuntimeApps.Authentication.Features.Verification.Models.VerificationOptions())),
-                Mock.Of<RuntimeApps.Authentication.Features.Account.Contracts.IAuthenticationSessionIssuer<IdentityUser<int>>>());
+                Mock.Of<RuntimeApps.Authentication.Features.Account.Contracts.IAuthenticationSessionIssuer<IdentityUser<int>>>(),
+                Mock.Of<IUserTwoFactorManager<IdentityUser<int>>>());
     }
 
     [Fact]

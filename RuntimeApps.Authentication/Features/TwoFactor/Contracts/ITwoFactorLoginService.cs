@@ -19,6 +19,13 @@ public interface ITwoFactorLoginService<TUser> where TUser : class {
     Task<TwoFactorLoginStart> BeginAsync(TUser user, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Like <see cref="BeginAsync"/>, for a user who passed an external provider login. Applies
+    /// <c>TwoFactorOptions.ExternalLoginPolicy</c>: the result allows sign-in when the provider is trusted or the user
+    /// has two-factor disabled, and otherwise carries a challenge. Never issues a session.
+    /// </summary>
+    Task<TwoFactorLoginStart> BeginExternalAsync(TUser user, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Verifies the code for the challenge and, only on success, issues the authentication session.
     /// Every failure (unknown, expired, used or locked challenge, wrong or replayed code, ineligible account,
     /// method not enrolled) returns the same non-succeeded result so callers cannot tell the reasons apart.

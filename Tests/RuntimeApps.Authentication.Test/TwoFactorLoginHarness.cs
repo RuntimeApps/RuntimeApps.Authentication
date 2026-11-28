@@ -29,6 +29,7 @@ public sealed class TwoFactorLoginHarness : IAsyncDisposable {
         configure?.Invoke(Options);
         Store = new EfTwoFactorChallengeStore<LoginDbContext, int>(db);
 
+        TwoFactor.Setup(t => t.GetTwoFactorEnabledAsync(It.IsAny<IdentityUser<int>>())).ReturnsAsync(true);
         Users.Setup(u => u.FindByIdAsync("7")).ReturnsAsync(() => UserExists ? User : null);
         Lockout.Setup(l => l.IsLockedOutAsync(It.IsAny<IdentityUser<int>>())).ReturnsAsync(() => LockedOut);
         Logins.Setup(l => l.GetLoginsAsync(It.IsAny<IdentityUser<int>>())).ReturnsAsync(new List<UserLoginInfo>());
@@ -41,7 +42,7 @@ public sealed class TwoFactorLoginHarness : IAsyncDisposable {
             Users.Object, Lockout.Object,
             new TwoFactorAccountEligibility<IdentityUser<int>, int>(Lockout.Object, Logins.Object, SignIn.Object,
                 Microsoft.Extensions.Options.Options.Create(new VerificationOptions())),
-            Issuer.Object);
+            Issuer.Object, TwoFactor.Object);
     }
 
     public static readonly DateTimeOffset Start = new(2026, 1, 1, 9, 0, 0, TimeSpan.Zero);
@@ -53,6 +54,7 @@ public sealed class TwoFactorLoginHarness : IAsyncDisposable {
     public TestClock Clock { get; } = new(Start);
     public TwoFactorOptions Options { get; }
     public Mock<IUserManager<IdentityUser<int>>> Users { get; } = new();
+    public Mock<IUserTwoFactorManager<IdentityUser<int>>> TwoFactor { get; } = new();
     public Mock<IUserLockoutManager<IdentityUser<int>>> Lockout { get; } = new();
     public Mock<IUserLoginManager<IdentityUser<int>>> Logins { get; } = new();
     public Mock<ISignInManager<IdentityUser<int>>> SignIn { get; } = new();

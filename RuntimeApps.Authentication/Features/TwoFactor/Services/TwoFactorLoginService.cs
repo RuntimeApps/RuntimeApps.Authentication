@@ -18,7 +18,8 @@ public class TwoFactorLoginService<TUser, TKey>(
     IUserManager<TUser> userManager,
     IUserLockoutManager<TUser> lockoutManager,
     TwoFactorAccountEligibility<TUser, TKey> eligibility,
-    IAuthenticationSessionIssuer<TUser> sessionIssuer) : ITwoFactorLoginService<TUser>
+    IAuthenticationSessionIssuer<TUser> sessionIssuer,
+    IUserTwoFactorManager<TUser> twoFactorManager) : ITwoFactorLoginService<TUser>
     where TUser : IdentityUser<TKey>
     where TKey : IEquatable<TKey> {
     private const int MaxChallengeLength = 256;
@@ -53,6 +54,17 @@ public class TwoFactorLoginService<TUser, TKey>(
         };
         await challengeStore.CreateAsync(challenge, _options.MaxPendingChallengesPerUser, cancellationToken);
         return TwoFactorLoginStart.Required(handle, challenge.ExpiresAt, enrolled);
+    }
+
+    public virtual async Task<TwoFactorLoginStart> BeginExternalAsync(TUser user, CancellationToken cancellationToken = default) {
+        ArgumentNullException.ThrowIfNull(user);
+        cancellationToken.ThrowIfCancellationRequested();
+        if(_options.ExternalLoginPolicy == TwoFactorExternalLoginPolicy.TrustProvider)
+            return TwoFactorLoginStart.SignIn();
+        // A user without two-factor has nothing to answer; the provider login is enough, as it was before.
+        if(!await twoFactorManager.GetTwoFactorEnabledAsync(user))
+            return TwoFactorLoginStart.SignIn();
+        return await BeginAsync(user, cancellationToken);
     }
 
     /// <remarks>
