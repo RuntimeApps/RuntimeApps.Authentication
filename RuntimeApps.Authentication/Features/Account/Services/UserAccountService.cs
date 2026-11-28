@@ -6,6 +6,7 @@ using RuntimeApps.Authentication.Features.Account.Contracts;
 using RuntimeApps.Authentication.Features.ExternalLogin.Contracts;
 using RuntimeApps.Authentication.Features.ExternalLogin.Services;
 using RuntimeApps.Authentication.Features.TwoFactor.Contracts;
+using RuntimeApps.Authentication.Features.TwoFactor.Models;
 using RuntimeApps.Authentication.Features.Verification.Contracts;
 using RuntimeApps.Authentication.Features.RefreshTokens.Contracts;
 using RuntimeApps.Authentication.Features.RefreshTokens.Models;
@@ -163,6 +164,14 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
                 });
             }
 
+            // The provider (and the email-verification gate above) passed. Users with two-factor enabled still
+            // answer the local second step unless the application chose to trust the provider.
+            if(_twoFactorLogin != null) {
+                var start = await _twoFactorLogin.BeginExternalAsync(user, cancellationToken);
+                if(!start.SignInAllowed)
+                    return CreateTwoFactorRequired(start);
+            }
+
             return await GenerateTokenAsync(user, cancellationToken);
         }
 
@@ -201,14 +210,17 @@ namespace RuntimeApps.Authentication.Features.Account.Services {
                 return await GenerateTokenAsync(user, cancellationToken);
             }
 
-            return new Result<TUser, Token>(ResultCode.Accepted, Result.CreateErrors("TwoFactorRequired", "A second authentication step is required.")) {
+            return CreateTwoFactorRequired(start);
+        }
+
+        private static Result<TUser, Token> CreateTwoFactorRequired(TwoFactorLoginStart start) =>
+            new(ResultCode.Accepted, Result.CreateErrors("TwoFactorRequired", "A second authentication step is required.")) {
                 Meta = new Token {
                     TwoFactorChallenge = start.Challenge,
                     TwoFactorExpiresAt = start.ExpiresAt,
                     TwoFactorMethods = start.Methods
                 }
             };
-        }
 
         public virtual Task<Result<TUser, Token>> CompleteRegistrationAsync(TUser user, CancellationToken cancellationToken = default) {
             if(user == null || !user.EmailConfirmed)
