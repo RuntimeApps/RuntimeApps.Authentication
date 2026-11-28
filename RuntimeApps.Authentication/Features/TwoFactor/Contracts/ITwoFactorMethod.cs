@@ -32,6 +32,14 @@ public interface ITwoFactorMethod<TUser> where TUser : class {
     /// <summary>Checks the code that proves enrollment. Does not enable two-factor; the framework does that on success.</summary>
     Task<bool> ConfirmEnrollmentAsync(TUser user, string code, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Removes any stored enrollment data of this method for the user, so it can no longer answer a challenge and
+    /// a later setup starts clean. The framework calls it on every method when two-factor is disabled, and on
+    /// every other method when two-factor is first enabled, so a setup that was started but never confirmed can
+    /// not count as enrolled. The default does nothing, which suits methods that keep no per-user secret.
+    /// </summary>
+    Task ClearEnrollmentAsync(TUser user, CancellationToken cancellationToken) => Task.CompletedTask;
+
     /// <summary>Delivers a fresh code to the user. Only called when <see cref="IsDeliveryBased"/> is true.</summary>
     Task SendChallengeAsync(TUser user, CancellationToken cancellationToken) =>
         throw new NotSupportedException($"The '{Name}' two-factor method does not deliver codes.");

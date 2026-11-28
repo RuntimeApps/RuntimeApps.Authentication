@@ -53,6 +53,15 @@ public sealed class AuthenticatorTwoFactorMethod<TUser>(
         });
     }
 
+    /// <summary>Rotates the authenticator key so the previous secret stops working.</summary>
+    public async Task ClearEnrollmentAsync(TUser user, CancellationToken cancellationToken) {
+        ArgumentNullException.ThrowIfNull(user);
+        cancellationToken.ThrowIfCancellationRequested();
+        var reset = await twoFactorManager.ResetAuthenticatorKeyAsync(user);
+        if(!reset.Succeeded)
+            throw new InvalidOperationException("The authenticator key could not be reset.");
+    }
+
     /// <summary>Removes spaces and hyphens; returns null unless exactly six ASCII digits remain.</summary>
     public string NormalizeCode(string code) => TryNormalizeCode(code, out var normalized) ? normalized : null;
 
