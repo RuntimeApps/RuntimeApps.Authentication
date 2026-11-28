@@ -341,6 +341,163 @@ public sealed class FeatureEndpointMappingTest {
         ManagementService(host).Verify(s => s.BeginSetupAsync(It.IsAny<IdentityUser<int>>(), It.IsAny<string>(), It.IsAny<TwoFactorReauthenticationModel>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    private const string ConfirmPath = "two-factor/methods/{method}/confirm";
+    private const string DisablePath = "two-factor/disable";
+    private const string DisableBody = "{\"CurrentPassword\":\"password\",\"Method\":\"authenticator\",\"Code\":\"123456\"}";
+
+    [Fact]
+    public void TwoFactorConfirmAndDisable_RequireAuthorizationAndDeclareTheirResponses() {
+        using var host = CreateHost(includeVerificationDependencies: false, includeTwoFactorManagement: true);
+
+        foreach(var (path, expected) in new[] { (ConfirmPath, new[] { 200, 400, 401, 403, 409, 423, 429 }), (DisablePath, new[] { 200, 400, 401, 403, 409, 423, 429 }) }) {
+            var endpoint = MapManagementEndpoint(host, path, "POST");
+            Assert.NotEmpty(endpoint.Metadata.GetOrderedMetadata<Microsoft.AspNetCore.Authorization.IAuthorizeData>());
+            var codes = endpoint.Metadata.GetOrderedMetadata<Microsoft.AspNetCore.Http.Metadata.IProducesResponseTypeMetadata>().Select(m => m.StatusCode).ToArray();
+            foreach(var code in expected)
+                Assert.Contains(code, codes);
+        }
+    }
+
+    [Fact]
+    public async Task TwoFactorConfirm_Success_Returns200WithTheStatus() {
+        using var host = CreateHost(includeVerificationDependencies: false, includeTwoFactorManagement: true);
+        var endpoint = MapManagementEndpoint(host, ConfirmPath, "POST");
+        ManagementService(host).Setup(s => s.ConfirmSetupAsync(It.IsAny<IdentityUser<int>>(), "authenticator", "123456", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Result<TwoFactorStatus>(new TwoFactorStatus(true, [new TwoFactorMethodStatus("authenticator", false, true)])));
+
+        var response = await SendJson(endpoint, host.Endpoints.ServiceProvider, "{\"Code\":\"123456\"}", Route("authenticator"));
+
+        Assert.Equal(StatusCodes.Status200OK, response.Status);
+        using var json = System.Text.Json.JsonDocument.Parse(response.Body);
+        Assert.True(json.RootElement.GetProperty("enabled").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData("{\"Code\":\"\"}")]
+    [InlineData("{\"Code\":\"  \"}")]
+    [InlineData("{}")]
+    public async Task TwoFactorConfirm_BlankCode_Returns400WithoutCallingTheService(string body) {
+        using var host = CreateHost(includeVerificationDependencies: false, includeTwoFactorManagement: true);
+        var endpoint = MapManagementEndpoint(host, ConfirmPath, "POST");
+
+        var response = await SendJson(endpoint, host.Endpoints.ServiceProvider, body, Route("authenticator"));
+
+        Assert.Equal(StatusCodes.Status400BadRequest, response.Status);
+        Assert.Contains("InvalidTwoFactorCode", response.Body);
+        ManagementService(host).Verify(s => s.ConfirmSetupAsync(It.IsAny<IdentityUser<int>>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(ResultCode.BadRequest, StatusCodes.Status400BadRequest)]
+    [InlineData(ResultCode.Conflict, StatusCodes.Status409Conflict)]
+    [InlineData(ResultCode.Locked, StatusCodes.Status423Locked)]
+    public async Task TwoFactorConfirm_Failures_MapToTheirStatus_WithoutEchoingTheCode(ResultCode code, int status) {
+        using var host = CreateHost(includeVerificationDependencies: false, includeTwoFactorManagement: true);
+        var endpoint = MapManagementEndpoint(host, ConfirmPath, "POST");
+        ManagementService(host).Setup(s => s.ConfirmSetupAsync(It.IsAny<IdentityUser<int>>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Result<TwoFactorStatus>(code, Result.CreateErrors("InvalidCode", "The code is incorrect or has already been used.")));
+
+        var response = await SendJson(endpoint, host.Endpoints.ServiceProvider, "{\"Code\":\"987654\"}", Route("authenticator"));
+
+        Assert.Equal(status, response.Status);
+        Assert.DoesNotContain("987654", response.Body);
+    }
+
+    [Fact]
+    public async Task TwoFactorConfirm_WhenThrottled_Returns429BeforeAnyWork() {
+        using var host = CreateHost(includeVerificationDependencies: false, includeTwoFactorManagement: true);
+        var endpoint = MapManagementEndpoint(host, ConfirmPath, "POST");
+        Limiter(host).Setup(l => l.IsAllowedAsync(It.IsAny<HttpContext>(), It.IsAny<CancellationToken>())).Returns(new ValueTask<bool>(false));
+
+        var response = await SendJson(endpoint, host.Endpoints.ServiceProvider, "{\"Code\":\"123456\"}", Route("authenticator"));
+
+        Assert.Equal(StatusCodes.Status429TooManyRequests, response.Status);
+        ManagementService(host).Verify(s => s.ConfirmSetupAsync(It.IsAny<IdentityUser<int>>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task TwoFactorConfirm_WithoutAUser_Returns401() {
+        using var host = CreateHost(includeVerificationDependencies: false, includeTwoFactorManagement: true);
+        var endpoint = MapManagementEndpoint(host, ConfirmPath, "POST");
+        Mock.Get(host.Endpoints.ServiceProvider.GetRequiredService<IUserManager<IdentityUser<int>>>())
+            .Setup(m => m.GetUserAsync(It.IsAny<System.Security.Claims.ClaimsPrincipal>())).ReturnsAsync((IdentityUser<int>)null);
+
+        var response = await SendJson(endpoint, host.Endpoints.ServiceProvider, "{\"Code\":\"123456\"}", Route("authenticator"));
+
+        Assert.Equal(StatusCodes.Status401Unauthorized, response.Status);
+    }
+
+    [Fact]
+    public async Task TwoFactorDisable_Success_Returns200WithTheStatus() {
+        using var host = CreateHost(includeVerificationDependencies: false, includeTwoFactorManagement: true);
+        var endpoint = MapManagementEndpoint(host, DisablePath, "POST");
+        ManagementService(host).Setup(s => s.DisableAsync(It.IsAny<IdentityUser<int>>(), It.Is<TwoFactorDisableModel>(m => m.Method == "authenticator" && m.Code == "123456" && m.CurrentPassword == "password"), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Result<TwoFactorStatus>(new TwoFactorStatus(false, [])));
+
+        var response = await SendJson(endpoint, host.Endpoints.ServiceProvider, DisableBody);
+
+        Assert.Equal(StatusCodes.Status200OK, response.Status);
+        using var json = System.Text.Json.JsonDocument.Parse(response.Body);
+        Assert.False(json.RootElement.GetProperty("enabled").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData("{\"CurrentPassword\":\"password\",\"Method\":\"\",\"Code\":\"123456\"}")]
+    [InlineData("{\"CurrentPassword\":\"password\",\"Method\":\"authenticator\",\"Code\":\" \"}")]
+    [InlineData("{\"CurrentPassword\":\"password\"}")]
+    public async Task TwoFactorDisable_MissingMethodOrCode_Returns400WithoutCallingTheService(string body) {
+        using var host = CreateHost(includeVerificationDependencies: false, includeTwoFactorManagement: true);
+        var endpoint = MapManagementEndpoint(host, DisablePath, "POST");
+
+        var response = await SendJson(endpoint, host.Endpoints.ServiceProvider, body);
+
+        Assert.Equal(StatusCodes.Status400BadRequest, response.Status);
+        Assert.Contains("InvalidTwoFactorRequest", response.Body);
+        ManagementService(host).Verify(s => s.DisableAsync(It.IsAny<IdentityUser<int>>(), It.IsAny<TwoFactorDisableModel>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(ResultCode.BadRequest, StatusCodes.Status400BadRequest)]
+    [InlineData(ResultCode.Forbidden, StatusCodes.Status403Forbidden)]
+    [InlineData(ResultCode.Conflict, StatusCodes.Status409Conflict)]
+    [InlineData(ResultCode.Locked, StatusCodes.Status423Locked)]
+    public async Task TwoFactorDisable_Failures_MapToTheirStatus_WithoutEchoingSecrets(ResultCode code, int status) {
+        using var host = CreateHost(includeVerificationDependencies: false, includeTwoFactorManagement: true);
+        var endpoint = MapManagementEndpoint(host, DisablePath, "POST");
+        ManagementService(host).Setup(s => s.DisableAsync(It.IsAny<IdentityUser<int>>(), It.IsAny<TwoFactorDisableModel>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Result<TwoFactorStatus>(code, Result.CreateErrors("InvalidCode", "The code is incorrect or has already been used.")));
+
+        var response = await SendJson(endpoint, host.Endpoints.ServiceProvider, DisableBody);
+
+        Assert.Equal(status, response.Status);
+        Assert.DoesNotContain("123456", response.Body);
+        Assert.DoesNotContain("password", response.Body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task TwoFactorDisable_WhenThrottled_Returns429BeforeAnyWork() {
+        using var host = CreateHost(includeVerificationDependencies: false, includeTwoFactorManagement: true);
+        var endpoint = MapManagementEndpoint(host, DisablePath, "POST");
+        Limiter(host).Setup(l => l.IsAllowedAsync(It.IsAny<HttpContext>(), It.IsAny<CancellationToken>())).Returns(new ValueTask<bool>(false));
+
+        var response = await SendJson(endpoint, host.Endpoints.ServiceProvider, DisableBody);
+
+        Assert.Equal(StatusCodes.Status429TooManyRequests, response.Status);
+        ManagementService(host).Verify(s => s.DisableAsync(It.IsAny<IdentityUser<int>>(), It.IsAny<TwoFactorDisableModel>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task TwoFactorDisable_WithoutAUser_Returns401() {
+        using var host = CreateHost(includeVerificationDependencies: false, includeTwoFactorManagement: true);
+        var endpoint = MapManagementEndpoint(host, DisablePath, "POST");
+        Mock.Get(host.Endpoints.ServiceProvider.GetRequiredService<IUserManager<IdentityUser<int>>>())
+            .Setup(m => m.GetUserAsync(It.IsAny<System.Security.Claims.ClaimsPrincipal>())).ReturnsAsync((IdentityUser<int>)null);
+
+        var response = await SendJson(endpoint, host.Endpoints.ServiceProvider, DisableBody);
+
+        Assert.Equal(StatusCodes.Status401Unauthorized, response.Status);
+    }
+
     [Fact]
     public async Task TwoFactorSetup_WithoutAUser_Returns401() {
         using var host = CreateHost(includeVerificationDependencies: false, includeTwoFactorManagement: true);

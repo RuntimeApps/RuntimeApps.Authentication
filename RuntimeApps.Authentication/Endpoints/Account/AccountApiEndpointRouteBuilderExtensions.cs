@@ -391,6 +391,51 @@ namespace RuntimeApps.Authentication.Endpoints.Account {
                   .Produces(StatusCodes.Status409Conflict)
                   .Produces(StatusCodes.Status423Locked)
                   .Produces(StatusCodes.Status429TooManyRequests);
+
+                authorizedRouteGroup.MapPost("two-factor/methods/{method}/confirm", async Task<IResult> (string method, [FromBody] TwoFactorConfirmModel request, IUserManager<TUser> userManager, ITwoFactorManagementService<TUser> twoFactor, ITwoFactorRequestLimiter requestLimiter, HttpContext httpContext, CancellationToken cancellationToken) => {
+                    // Guessing a code is the attack here, so throttle before any work.
+                    if(!await requestLimiter.IsAllowedAsync(httpContext, cancellationToken))
+                        return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+                    if(string.IsNullOrWhiteSpace(request?.Code))
+                        return ValidationProblemFactory.CreateValidationProblem("InvalidTwoFactorCode", "A code is required.");
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var user = await userManager.GetUserAsync(httpContext.User);
+                    if(user == null)
+                        return TypedResults.Unauthorized();
+
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var result = await twoFactor.ConfirmSetupAsync(user, method, request.Code, cancellationToken);
+                    return result.Succeeded ? TypedResults.Ok(result.Data) : result.CreatePublicError();
+                }).WithName("AccountManagement_ConfirmTwoFactor").WithTags("Account management").WithSummary("Confirm a started two-factor setup with a code and turn two-factor on")
+                  .Produces<TwoFactorStatus>(StatusCodes.Status200OK)
+                  .ProducesValidationProblem(StatusCodes.Status400BadRequest)
+                  .Produces(StatusCodes.Status401Unauthorized)
+                  .Produces(StatusCodes.Status403Forbidden)
+                  .Produces(StatusCodes.Status409Conflict)
+                  .Produces(StatusCodes.Status423Locked)
+                  .Produces(StatusCodes.Status429TooManyRequests);
+
+                authorizedRouteGroup.MapPost("two-factor/disable", async Task<IResult> ([FromBody] TwoFactorDisableModel request, IUserManager<TUser> userManager, ITwoFactorManagementService<TUser> twoFactor, ITwoFactorRequestLimiter requestLimiter, HttpContext httpContext, CancellationToken cancellationToken) => {
+                    if(!await requestLimiter.IsAllowedAsync(httpContext, cancellationToken))
+                        return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+                    if(string.IsNullOrWhiteSpace(request?.Method) || string.IsNullOrWhiteSpace(request.Code))
+                        return ValidationProblemFactory.CreateValidationProblem("InvalidTwoFactorRequest", "A method and a code are required.");
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var user = await userManager.GetUserAsync(httpContext.User);
+                    if(user == null)
+                        return TypedResults.Unauthorized();
+
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var result = await twoFactor.DisableAsync(user, request, cancellationToken);
+                    return result.Succeeded ? TypedResults.Ok(result.Data) : result.CreatePublicError();
+                }).WithName("AccountManagement_DisableTwoFactor").WithTags("Account management").WithSummary("Turn two-factor off after re-authentication and a current code")
+                  .Produces<TwoFactorStatus>(StatusCodes.Status200OK)
+                  .ProducesValidationProblem(StatusCodes.Status400BadRequest)
+                  .Produces(StatusCodes.Status401Unauthorized)
+                  .Produces(StatusCodes.Status403Forbidden)
+                  .Produces(StatusCodes.Status409Conflict)
+                  .Produces(StatusCodes.Status423Locked)
+                  .Produces(StatusCodes.Status429TooManyRequests);
             }
 
             return endpoints;
