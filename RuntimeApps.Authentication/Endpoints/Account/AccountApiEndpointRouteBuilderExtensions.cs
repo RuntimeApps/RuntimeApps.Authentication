@@ -56,11 +56,16 @@ namespace RuntimeApps.Authentication.Endpoints.Account {
                     if(string.IsNullOrWhiteSpace(request?.Provider) || string.IsNullOrWhiteSpace(request.Token))
                         return ValidationProblemFactory.CreateValidationProblem("InvalidExternalLogin", "Provider and token are required.");
                     var result = await userAccountService.ExternalLoginAsync(request.Provider, request.Token, context.RequestAborted);
-                    if(!result.Succeeded)
+                    if(!result.Succeeded) {
+                        // The provider login passed but the user must still answer the local second factor.
+                        if(result.Code == ResultCode.Accepted)
+                            return TypedResults.Accepted((string)null, CreateContinuation(result.Meta));
                         return PublicErrorFactory.CreateExternalAuthenticationFailure();
+                    }
                     return TypedResults.Ok(MapResult<TUser, TUserDto, TKey>(result, mapper));
                 }).WithName("Authentication_ExternalLogin").WithTags("Authentication").WithSummary("Log in with an external provider")
                   .Produces<Result<TUserDto, Token>>(StatusCodes.Status200OK)
+                  .Produces<AuthenticationContinuationResponse>(StatusCodes.Status202Accepted)
                   .ProducesValidationProblem(StatusCodes.Status400BadRequest)
                   .ProducesProblem(StatusCodes.Status401Unauthorized);
             }

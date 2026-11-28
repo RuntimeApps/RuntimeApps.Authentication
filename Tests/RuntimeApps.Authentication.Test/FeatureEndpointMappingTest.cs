@@ -162,6 +162,81 @@ public sealed class FeatureEndpointMappingTest {
         Assert.Equal("{\"requiresTwoFactor\":true}", response.Body);
     }
 
+    private static RouteEndpoint MapExternalLogin(TestHost host) {
+        host.Endpoints.MapAuthenticationApi<IdentityUser<int>, TestUserDto, int>();
+        return Endpoints(host).OfType<RouteEndpoint>()
+            .Single(e => e.RoutePattern.RawText?.Contains("external", StringComparison.OrdinalIgnoreCase) == true);
+    }
+
+    private const string ExternalBody = "{\"Provider\":\"sample\",\"Token\":\"provider-token\"}";
+
+    [Fact]
+    public void ExternalLoginMetadata_DeclaresTokenFreeTwoFactorContinuation() {
+        using var host = CreateHost(includeVerificationDependencies: false, includeExternalProvider: true);
+
+        var accepted = Assert.Single(MapExternalLogin(host).Metadata.GetOrderedMetadata<Microsoft.AspNetCore.Http.Metadata.IProducesResponseTypeMetadata>()
+            .Where(metadata => metadata.StatusCode == StatusCodes.Status202Accepted));
+
+        Assert.Equal(typeof(AuthenticationContinuationResponse), accepted.Type);
+    }
+
+    [Fact]
+    public async Task ExternalLogin_TwoFactorRequired_Returns202WithChallengeAndNoToken() {
+        using var host = CreateHost(includeVerificationDependencies: false, includeExternalProvider: true);
+        var endpoint = MapExternalLogin(host);
+        var expires = new DateTimeOffset(2026, 1, 1, 9, 5, 0, TimeSpan.Zero);
+        Mock.Get(host.Endpoints.ServiceProvider.GetRequiredService<IUserAccountService<IdentityUser<int>>>())
+            .Setup(service => service.ExternalLoginAsync("sample", "provider-token", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Result<IdentityUser<int>, Token>(ResultCode.Accepted, Result.CreateErrors("TwoFactorRequired", "A second authentication step is required.")) {
+                Meta = new Token {
+                    AuthenticationToken = "must-not-leak",
+                    TwoFactorChallenge = "handle-9",
+                    TwoFactorExpiresAt = expires,
+                    TwoFactorMethods = [new TwoFactorMethodInfo("authenticator", false)]
+                }
+            });
+
+        var response = await SendJson(endpoint, host.Endpoints.ServiceProvider, ExternalBody);
+
+        Assert.Equal(StatusCodes.Status202Accepted, response.Status);
+        using var json = System.Text.Json.JsonDocument.Parse(response.Body);
+        Assert.True(json.RootElement.GetProperty("requiresTwoFactor").GetBoolean());
+        Assert.Equal("handle-9", json.RootElement.GetProperty("twoFactorChallenge").GetString());
+        Assert.Equal(expires, json.RootElement.GetProperty("expiresAt").GetDateTimeOffset());
+        Assert.Equal("authenticator", json.RootElement.GetProperty("methods")[0].GetProperty("name").GetString());
+        Assert.DoesNotContain("must-not-leak", response.Body);
+        Assert.DoesNotContain("provider-token", response.Body);
+    }
+
+    [Fact]
+    public async Task ExternalLogin_OtherFailures_StillReturnTheSanitized401() {
+        using var host = CreateHost(includeVerificationDependencies: false, includeExternalProvider: true);
+        var endpoint = MapExternalLogin(host);
+        Mock.Get(host.Endpoints.ServiceProvider.GetRequiredService<IUserAccountService<IdentityUser<int>>>())
+            .Setup(service => service.ExternalLoginAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Result<IdentityUser<int>, Token>(ResultCode.Forbidden, Result.CreateErrors("PrivateReason", "private detail")));
+
+        var response = await SendJson(endpoint, host.Endpoints.ServiceProvider, ExternalBody);
+
+        Assert.Equal(StatusCodes.Status401Unauthorized, response.Status);
+        Assert.Contains("external_authentication_failed", response.Body);
+        Assert.DoesNotContain("PrivateReason", response.Body);
+    }
+
+    [Fact]
+    public async Task ExternalLogin_VerificationRequired_StillReturns200WithTheVerificationHandle() {
+        using var host = CreateHost(includeVerificationDependencies: false, includeExternalProvider: true);
+        var endpoint = MapExternalLogin(host);
+        Mock.Get(host.Endpoints.ServiceProvider.GetRequiredService<IUserAccountService<IdentityUser<int>>>())
+            .Setup(service => service.ExternalLoginAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Result<IdentityUser<int>, Token>(new IdentityUser<int> { Id = 1 }, new Token { VerificationRequired = true, VerificationHandle = "verify-handle" }));
+
+        var response = await SendJson(endpoint, host.Endpoints.ServiceProvider, ExternalBody);
+
+        Assert.Equal(StatusCodes.Status200OK, response.Status);
+        Assert.Contains("verify-handle", response.Body);
+    }
+
     private static RouteEndpoint MapTwoFactor(TestHost host) {
         host.Endpoints.MapAuthenticationApi<IdentityUser<int>, TestUserDto, int>();
         return Endpoints(host).OfType<RouteEndpoint>().Single(e => e.RoutePattern.RawText != null && e.RoutePattern.RawText.EndsWith("login/two-factor", StringComparison.Ordinal));
