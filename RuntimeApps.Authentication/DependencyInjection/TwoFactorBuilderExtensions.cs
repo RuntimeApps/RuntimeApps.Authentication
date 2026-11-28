@@ -59,6 +59,8 @@ public static class TwoFactorBuilderExtensions {
         builder.Services.TryAddSingleton<ITwoFactorRequestLimiter, TwoFactorRequestLimiter>();
         builder.Services.TryAddScoped<TwoFactorAccountEligibility<TUser, TKey>>();
         builder.Services.TryAddScoped<ITwoFactorLoginService<TUser>, TwoFactorLoginService<TUser, TKey>>();
+        builder.Services.TryAddScoped<TwoFactorReauthenticator<TUser>>();
+        builder.Services.TryAddScoped<ITwoFactorManagementService<TUser>, TwoFactorManagementService<TUser, TKey>>();
         builder.Services.TryAddScoped<ITwoFactorCleanupService<TKey>, TwoFactorCleanupService<TKey>>();
         return builder;
     }
