@@ -12,6 +12,7 @@ using RuntimeApps.Authentication.Features.Account.Contracts;
 using RuntimeApps.Authentication.Features.Account.Models;
 using RuntimeApps.Authentication.Features.Registration.Contracts;
 using RuntimeApps.Authentication.Features.ExternalLogin.Contracts;
+using RuntimeApps.Authentication.Features.TwoFactor.Contracts;
 using RuntimeApps.Authentication.Features.Verification.Contracts;
 using RuntimeApps.Authentication.Identity.Contracts;
 using RuntimeApps.Authentication.Shared.Models;
@@ -161,6 +162,117 @@ public sealed class FeatureEndpointMappingTest {
         Assert.Equal("{\"requiresTwoFactor\":true}", response.Body);
     }
 
+    private static RouteEndpoint MapTwoFactor(TestHost host) {
+        host.Endpoints.MapAuthenticationApi<IdentityUser<int>, TestUserDto, int>();
+        return Endpoints(host).OfType<RouteEndpoint>().Single(e => e.RoutePattern.RawText == "login/two-factor");
+    }
+
+    private static Mock<ITwoFactorLoginService<IdentityUser<int>>> TwoFactorService(TestHost host) =>
+        Mock.Get(host.Endpoints.ServiceProvider.GetRequiredService<ITwoFactorLoginService<IdentityUser<int>>>());
+
+    private const string TwoFactorBody = "{\"Challenge\":\"handle\",\"Method\":\"authenticator\",\"Code\":\"123456\"}";
+
+    [Fact]
+    public void TwoFactorLogin_IsNotMappedWithoutTheFeature() {
+        using var host = CreateHost(includeVerificationDependencies: false);
+        host.Endpoints.MapAuthenticationApi<IdentityUser<int>, TestUserDto, int>();
+
+        Assert.DoesNotContain(Endpoints(host).OfType<RouteEndpoint>(), e => e.RoutePattern.RawText == "login/two-factor");
+    }
+
+    [Fact]
+    public void TwoFactorLogin_IsMappedAnonymouslyAndDeclaresItsResponses() {
+        using var host = CreateHost(includeVerificationDependencies: false, includeTwoFactor: true);
+
+        var endpoint = MapTwoFactor(host);
+
+        Assert.NotNull(endpoint.Metadata.GetMetadata<IAllowAnonymous>());
+        var codes = endpoint.Metadata.GetOrderedMetadata<Microsoft.AspNetCore.Http.Metadata.IProducesResponseTypeMetadata>().Select(m => m.StatusCode).ToArray();
+        Assert.Contains(StatusCodes.Status200OK, codes);
+        Assert.Contains(StatusCodes.Status400BadRequest, codes);
+        Assert.Contains(StatusCodes.Status401Unauthorized, codes);
+        Assert.Contains(StatusCodes.Status429TooManyRequests, codes);
+    }
+
+    [Fact]
+    public async Task TwoFactorLogin_ValidCode_Returns200WithToken() {
+        using var host = CreateHost(includeVerificationDependencies: false, includeTwoFactor: true);
+        var endpoint = MapTwoFactor(host);
+        var service = TwoFactorService(host);
+        service.Setup(s => s.CompleteAsync("handle", "authenticator", "123456", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Result<IdentityUser<int>, Token>(new IdentityUser<int> { Id = 1 }, new Token { AuthenticationToken = "access-token" }));
+
+        var response = await SendJson(endpoint, host.Endpoints.ServiceProvider, TwoFactorBody);
+
+        Assert.Equal(StatusCodes.Status200OK, response.Status);
+        Assert.Contains("access-token", response.Body);
+    }
+
+    [Theory]
+    [InlineData("{\"Challenge\":\"\",\"Method\":\"authenticator\",\"Code\":\"123456\"}")]
+    [InlineData("{\"Challenge\":\"handle\",\"Method\":\" \",\"Code\":\"123456\"}")]
+    [InlineData("{\"Challenge\":\"handle\",\"Method\":\"authenticator\"}")]
+    public async Task TwoFactorLogin_MissingField_Returns400WithoutCallingTheService(string body) {
+        using var host = CreateHost(includeVerificationDependencies: false, includeTwoFactor: true);
+        var endpoint = MapTwoFactor(host);
+        var service = TwoFactorService(host);
+
+        var response = await SendJson(endpoint, host.Endpoints.ServiceProvider, body);
+
+        Assert.Equal(StatusCodes.Status400BadRequest, response.Status);
+        Assert.Contains("InvalidTwoFactorLogin", response.Body);
+        service.Verify(s => s.CompleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(ResultCode.BadRequest)]
+    [InlineData(ResultCode.Forbidden)]
+    [InlineData(ResultCode.Locked)]
+    [InlineData(ResultCode.Conflict)]
+    public async Task TwoFactorLogin_AnyFailure_Returns_TheSameSanitized401(ResultCode code) {
+        using var host = CreateHost(includeVerificationDependencies: false, includeTwoFactor: true);
+        var endpoint = MapTwoFactor(host);
+        TwoFactorService(host).Setup(s => s.CompleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Result<IdentityUser<int>, Token>(code, Result.CreateErrors("PrivateReason", "private internal detail")));
+
+        var response = await SendJson(endpoint, host.Endpoints.ServiceProvider, TwoFactorBody);
+
+        Assert.Equal(StatusCodes.Status401Unauthorized, response.Status);
+        using var json = System.Text.Json.JsonDocument.Parse(response.Body);
+        Assert.Equal("authentication_failed", json.RootElement.GetProperty("code").GetString());
+        Assert.Equal("The code is incorrect or the sign-in attempt has expired.", json.RootElement.GetProperty("detail").GetString());
+        Assert.DoesNotContain("PrivateReason", response.Body);
+        Assert.DoesNotContain("private internal detail", response.Body);
+        Assert.DoesNotContain("handle", response.Body);
+        Assert.DoesNotContain("123456", response.Body);
+    }
+
+    [Fact]
+    public async Task TwoFactorLogin_WhenThrottled_Returns429BeforeAnyWork() {
+        using var host = CreateHost(includeVerificationDependencies: false, includeTwoFactor: true);
+        var endpoint = MapTwoFactor(host);
+        var service = TwoFactorService(host);
+        Mock.Get(host.Endpoints.ServiceProvider.GetRequiredService<ITwoFactorRequestLimiter>())
+            .Setup(l => l.IsAllowedAsync(It.IsAny<HttpContext>(), It.IsAny<CancellationToken>())).Returns(new ValueTask<bool>(false));
+
+        var response = await SendJson(endpoint, host.Endpoints.ServiceProvider, TwoFactorBody);
+
+        Assert.Equal(StatusCodes.Status429TooManyRequests, response.Status);
+        service.Verify(s => s.CompleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task TwoFactorLogin_ThrottleAppliesEvenToMalformedRequests() {
+        using var host = CreateHost(includeVerificationDependencies: false, includeTwoFactor: true);
+        var endpoint = MapTwoFactor(host);
+        Mock.Get(host.Endpoints.ServiceProvider.GetRequiredService<ITwoFactorRequestLimiter>())
+            .Setup(l => l.IsAllowedAsync(It.IsAny<HttpContext>(), It.IsAny<CancellationToken>())).Returns(new ValueTask<bool>(false));
+
+        var response = await SendJson(endpoint, host.Endpoints.ServiceProvider, "{\"Challenge\":\"\"}");
+
+        Assert.Equal(StatusCodes.Status429TooManyRequests, response.Status);
+    }
+
     [Fact]
     public void RegistrationMapping_IsIndependentAndAnonymous() {
         using var host = CreateHost(includeVerificationDependencies: true);
@@ -224,7 +336,7 @@ public sealed class FeatureEndpointMappingTest {
         return (context.Response.StatusCode, await new StreamReader(response).ReadToEndAsync());
     }
 
-    private static TestHost CreateHost(bool includeVerificationDependencies, bool includeExternalProvider = false) {
+    private static TestHost CreateHost(bool includeVerificationDependencies, bool includeExternalProvider = false, bool includeTwoFactor = false) {
         var services = new ServiceCollection();
         services.AddLogging().AddProblemDetails();
         services.AddSingleton(Mock.Of<IRegistrationService<IdentityUser<int>, int>>());
@@ -232,6 +344,13 @@ public sealed class FeatureEndpointMappingTest {
         services.AddSingleton(Mock.Of<IUserMapper<IdentityUser<int>, TestUserDto>>());
         if(includeExternalProvider)
             services.AddSingleton<IExternalLoginProvider<IdentityUser<int>>>(Mock.Of<IExternalLoginProvider<IdentityUser<int>>>());
+        if(includeTwoFactor) {
+            services.AddSingleton(Mock.Of<ITwoFactorLoginService<IdentityUser<int>>>());
+            var limiter = new Mock<ITwoFactorRequestLimiter>();
+            limiter.Setup(l => l.IsAllowedAsync(It.IsAny<HttpContext>(), It.IsAny<CancellationToken>())).Returns(new ValueTask<bool>(true));
+            services.AddSingleton(limiter);
+            services.AddSingleton(limiter.Object);
+        }
         if(includeVerificationDependencies) {
             services.AddSingleton(Mock.Of<IVerificationWorkflowService<IdentityUser<int>, int>>());
             services.AddSingleton(Mock.Of<IVerificationRequestStore<int>>());

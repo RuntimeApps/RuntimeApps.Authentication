@@ -14,6 +14,8 @@ using RuntimeApps.Authentication.Features.ExternalLogin.Models;
 using RuntimeApps.Authentication.Features.RefreshTokens.Contracts;
 using RuntimeApps.Authentication.Features.Registration.Contracts;
 using RuntimeApps.Authentication.Features.Registration.Models;
+using RuntimeApps.Authentication.Features.TwoFactor.Contracts;
+using RuntimeApps.Authentication.Features.TwoFactor.Models;
 using RuntimeApps.Authentication.Features.Verification.Contracts;
 using RuntimeApps.Authentication.Identity.Contracts;
 using RuntimeApps.Authentication.Shared.Extensions;
@@ -61,6 +63,27 @@ namespace RuntimeApps.Authentication.Endpoints.Account {
                   .Produces<Result<TUserDto, Token>>(StatusCodes.Status200OK)
                   .ProducesValidationProblem(StatusCodes.Status400BadRequest)
                   .ProducesProblem(StatusCodes.Status401Unauthorized);
+            }
+
+            // Mapped only when API two-factor login is registered (AddTwoFactor), like external login above.
+            if(endpoints.ServiceProvider.GetService<IServiceProviderIsService>()
+                ?.IsService(typeof(ITwoFactorLoginService<TUser>)) == true) {
+                routeGroup.MapPost("login/two-factor", async Task<IResult> ([FromBody] TwoFactorLoginModel request, ITwoFactorLoginService<TUser> twoFactorLogin, ITwoFactorRequestLimiter requestLimiter, [FromServices] IUserMapper<TUser, TUserDto> mapper, HttpContext context) => {
+                    // Throttle before doing any work, so guessing is limited per client address.
+                    if(!await requestLimiter.IsAllowedAsync(context, context.RequestAborted))
+                        return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+                    if(string.IsNullOrWhiteSpace(request?.Challenge) || string.IsNullOrWhiteSpace(request.Method) || string.IsNullOrWhiteSpace(request.Code))
+                        return ValidationProblemFactory.CreateValidationProblem("InvalidTwoFactorLogin", "Challenge, method and code are required.");
+                    var result = await twoFactorLogin.CompleteAsync(request.Challenge, request.Method, request.Code, context.RequestAborted);
+                    // Wrong code, expired or used challenge, unknown method and ineligible account all look the same.
+                    if(!result.Succeeded)
+                        return PublicErrorFactory.CreateTwoFactorLoginFailure();
+                    return TypedResults.Ok(MapResult<TUser, TUserDto, TKey>(result, mapper));
+                }).WithName("Authentication_LoginTwoFactor").WithTags("Authentication").WithSummary("Complete a login with a second factor")
+                  .Produces<Result<TUserDto, Token>>(StatusCodes.Status200OK)
+                  .ProducesValidationProblem(StatusCodes.Status400BadRequest)
+                  .ProducesProblem(StatusCodes.Status401Unauthorized)
+                  .Produces(StatusCodes.Status429TooManyRequests);
             }
 
             return endpoints;

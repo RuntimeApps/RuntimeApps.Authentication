@@ -11,6 +11,12 @@ namespace RuntimeApps.Authentication.Shared.Extensions {
                 title: "Authentication failed", detail: "External authentication could not be completed.",
                 extensions: new Dictionary<string, object> { ["code"] = "external_authentication_failed" });
 
+        /// <summary>One response for every failed second-factor attempt, so the reason is never revealed.</summary>
+        public static IResult CreateTwoFactorLoginFailure() =>
+            TypedResults.Problem(statusCode: StatusCodes.Status401Unauthorized,
+                title: "Authentication failed", detail: "The code is incorrect or the sign-in attempt has expired.",
+                extensions: new Dictionary<string, object> { ["code"] = "authentication_failed" });
+
         public static IResult CreatePublicError(this IdentityResult result) =>
             new Result(ResultCode.BadRequest, result?.Errors ?? Enumerable.Empty<IdentityError>()).CreatePublicError();
 
